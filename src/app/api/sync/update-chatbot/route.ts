@@ -102,3 +102,5 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
+// GET not supported — POST only
+export function GET() { return new Response('Method Not Allowed', { status: 405 }); }

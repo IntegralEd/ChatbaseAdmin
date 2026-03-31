@@ -41,7 +41,7 @@ export default async function DashboardPage() {
     listRecords(TABLES.CONVERSATIONS, { maxRecords: 1000 }),
     listRecords(TABLES.MESSAGES, { maxRecords: 1000 }),
     listRecords<PromptChangeRequestFields>(TABLES.PROMPT_CHANGE_REQUESTS, {
-      filterByFormula: 'OR({Status}="open",{Status}="pending")',
+      filterByFormula: 'OR({Change_Status}="open",{Change_Status}="pending")',
     }),
     listRecords<SyncJobFields>(TABLES.SYNC_JOBS, {
       sort: [{ field: 'Started_At', direction: 'desc' }],
