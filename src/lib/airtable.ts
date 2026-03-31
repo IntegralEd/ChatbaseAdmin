@@ -15,13 +15,13 @@ import { airtableTableUrl, airtableListUrl, airtableUpsertUrl } from './url';
 
 // ── Generic Airtable record shape ─────────────────────────────────────────────
 
-export interface AirtableRecord<T extends Record<string, unknown>> {
+export interface AirtableRecord<T extends object> {
   id: string;
   createdTime: string;
   fields: T;
 }
 
-export interface AirtableListResponse<T extends Record<string, unknown>> {
+export interface AirtableListResponse<T extends object> {
   records: AirtableRecord<T>[];
   offset?: string;
 }
@@ -76,7 +76,7 @@ async function airtableFetch<T>(url: string, options: RequestInit = {}): Promise
  * List records from a table.
  * Paginates automatically using `offset` until all records are fetched.
  */
-export async function listRecords<T extends Record<string, unknown>>(
+export async function listRecords<T extends object>(
   tableId: string,
   options: {
     filterByFormula?: string;
@@ -117,7 +117,7 @@ export async function listRecords<T extends Record<string, unknown>>(
 /**
  * Get a single record by its Airtable record ID.
  */
-export async function getRecord<T extends Record<string, unknown>>(
+export async function getRecord<T extends object>(
   tableId: string,
   recordId: string,
 ): Promise<AirtableRecord<T>> {
@@ -128,7 +128,7 @@ export async function getRecord<T extends Record<string, unknown>>(
 /**
  * Create a new record.
  */
-export async function createRecord<T extends Record<string, unknown>>(
+export async function createRecord<T extends object>(
   tableId: string,
   fields: Partial<T>,
 ): Promise<AirtableRecord<T>> {
@@ -143,7 +143,7 @@ export async function createRecord<T extends Record<string, unknown>>(
  * Update (PATCH) an existing record by Airtable record ID.
  * Only fields provided are updated; others are left unchanged.
  */
-export async function updateRecord<T extends Record<string, unknown>>(
+export async function updateRecord<T extends object>(
   tableId: string,
   recordId: string,
   fields: Partial<T>,
@@ -157,14 +157,14 @@ export async function updateRecord<T extends Record<string, unknown>>(
 
 // ── Upsert ────────────────────────────────────────────────────────────────────
 
-export interface UpsertPayload<T extends Record<string, unknown>> {
+export interface UpsertPayload<T extends object> {
   records: Array<{ fields: Partial<T> }>;
   performUpsert: {
     fieldsToMergeOn: string[];
   };
 }
 
-export interface AirtableUpsertResponse<T extends Record<string, unknown>> {
+export interface AirtableUpsertResponse<T extends object> {
   createdRecords: string[];
   updatedRecords: string[];
   records: AirtableRecord<T>[];
@@ -177,7 +177,7 @@ export interface AirtableUpsertResponse<T extends Record<string, unknown>> {
  * NOTE: Airtable upsert endpoint accepts max 10 records per request.
  * Use upsertRecords (plural) for larger batches.
  */
-export async function upsertBatch<T extends Record<string, unknown>>(
+export async function upsertBatch<T extends object>(
   tableId: string,
   records: Array<{ fields: Partial<T> }>,
   fieldsToMergeOn: string[],
@@ -197,7 +197,7 @@ export async function upsertBatch<T extends Record<string, unknown>>(
  * Upsert an arbitrary number of records, chunking into batches of 10.
  * Returns aggregated created/updated counts.
  */
-export async function upsertRecords<T extends Record<string, unknown>>(
+export async function upsertRecords<T extends object>(
   tableId: string,
   records: Array<{ fields: Partial<T> }>,
   fieldsToMergeOn: string[],
