@@ -130,11 +130,12 @@ export async function fetchAllConversations(
  */
 export async function updateChatbotData(
   chatbotId: string,
+  chatbotName: string,
   sourceText: string,
 ): Promise<void> {
   await chatbaseFetch<unknown>(`${CHATBASE_API_BASE}/update-chatbot-data`, {
     method: 'POST',
-    body: JSON.stringify({ chatbotId, sourceText }),
+    body: JSON.stringify({ chatbotId, chatbotName, sourceText }),
   });
 }
 

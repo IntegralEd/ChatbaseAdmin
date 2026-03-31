@@ -31,6 +31,7 @@ import type { ChatbotFields } from '@/lib/mappers';
 
 const UpdateChatbotSchema = z.object({
   chatbotId: z.string().min(1),
+  chatbotName: z.string().optional(),  // required by Chatbase update-chatbot-data; falls back to chatbotId
   sourceText: z.string().optional(),
   instructions: z.string().optional(),
   dryRun: z.boolean().optional().default(false),
@@ -54,7 +55,8 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { chatbotId, sourceText, instructions, dryRun }: UpdateChatbotBody = parsed.data;
+  const { chatbotId, chatbotName, sourceText, instructions, dryRun }: UpdateChatbotBody = parsed.data;
+  const resolvedName = chatbotName ?? chatbotId;
 
   if (!sourceText && !instructions) {
     return NextResponse.json(
@@ -79,7 +81,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   try {
     // Update Chatbase — settings and data are separate endpoints
     if (instructions !== undefined) await updateChatbotSettings(chatbotId, { instructions });
-    if (sourceText !== undefined) await updateChatbotData(chatbotId, sourceText);
+    if (sourceText !== undefined) await updateChatbotData(chatbotId, resolvedName, sourceText);
 
     // Find Airtable record by Chatbase_Chatbot_ID (double underscore, misspelled)
     const records = await listRecords<ChatbotFields>(TABLES.CHATBOTS, {

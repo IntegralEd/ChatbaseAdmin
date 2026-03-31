@@ -62,7 +62,7 @@ export async function pushFeedbackAsSource(
   console.log(`[pushFeedbackAsSource] sourceText length=${sourceText.length}`);
 
   try {
-    await updateChatbotData(chatbaseId, sourceText);
+    await updateChatbotData(chatbaseId, chatbot.fields.Chatbot_Name ?? chatbaseId, sourceText);
     const now = new Date().toISOString();
     await Promise.all(
       reviews.map((r) =>
@@ -127,7 +127,7 @@ export async function pushPromptChange(
       await updateChatbotSettings(chatbaseId, { instructions: change.fields.Proposed_Prompt_Text });
     }
     if (hasSource) {
-      await updateChatbotData(chatbaseId, change.fields.Proposed_Source_Change!);
+      await updateChatbotData(chatbaseId, chatbot.fields.Chatbot_Name ?? chatbaseId, change.fields.Proposed_Source_Change!);
     }
     await updateRecord<PromptChangeRequestFields>(TABLES.PROMPT_CHANGE_REQUESTS, changeId, {
       Change_Status: 'pushed',
