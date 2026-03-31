@@ -55,13 +55,17 @@ export interface MessageReviewFields {
 }
 
 export interface PromptChangeRequestFields {
-  Title: string;
-  Proposed_Change: string;
-  Status: string;
+  Change_Title: string;
+  Problem_Observed: string;
+  Change_Type: string;
+  Proposed_Prompt_Text: string;
+  Proposed_Source_Change: string;
+  Change_Status: string;
   // ⚠️ Schema mismatch: field name says "Message_Links" but links to Conversations
   Source_Message_Links: string[];
-  Approved_By: string[];
-  Applied_At: string;
+  Requested_By: string[];
+  Pushed_Datetime: string;
+  Chatbase_Update_Result: string;
 }
 
 export interface ContentChangeRequestFields {

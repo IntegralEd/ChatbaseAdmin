@@ -6,8 +6,9 @@
  * (tblV1K2KQUrI8PAmt), NOT Chatbase_Messages. The field name is misleading.
  * This is a known schema mismatch documented in src/lib/mappers.ts.
  *
- * Compare: Content_Change_Requests.Source_Message_Links correctly links to
- * Chatbase_Messages (tblAMrcshFzNUYx5g).
+ * Actual field names (from schema-registry.csv):
+ *   Change_Title, Problem_Observed, Change_Type, Proposed_Prompt_Text,
+ *   Proposed_Source_Change, Change_Status, Pushed_Datetime, Chatbase_Update_Result
  */
 
 import type { Metadata } from 'next';
@@ -25,6 +26,7 @@ function statusBadge(status: string) {
     pending: 'badge-default',
     approved: 'badge-success',
     applied: 'badge-success',
+    pushed: 'badge-success',
     rejected: 'badge-error',
   };
   return `badge ${map[status?.toLowerCase()] ?? 'badge-default'}`;
@@ -47,7 +49,7 @@ export default async function PromptChangesPage() {
 
   try {
     records = await listRecords<PromptChangeRequestFields>(TABLES.PROMPT_CHANGE_REQUESTS, {
-      sort: [{ field: 'Title', direction: 'asc' }],
+      sort: [{ field: 'Change_Title', direction: 'asc' }],
     });
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
@@ -78,25 +80,33 @@ export default async function PromptChangesPage() {
             <thead>
               <tr>
                 <th>Title</th>
+                <th>Type</th>
                 <th>Status</th>
-                <th>Proposed Change</th>
+                <th>Problem Observed</th>
+                <th>Proposed Prompt</th>
                 {/* Source_Message_Links links to Conversations — see schema note above */}
                 <th>Linked Conversations</th>
-                <th>Applied At</th>
+                <th>Pushed At</th>
               </tr>
             </thead>
             <tbody>
               {records.map((r) => (
                 <tr key={r.id}>
-                  <td><strong>{r.fields.Title ?? '—'}</strong></td>
+                  <td><strong>{r.fields.Change_Title ?? '—'}</strong></td>
+                  <td>{r.fields.Change_Type ?? '—'}</td>
                   <td>
-                    <span className={statusBadge(r.fields.Status ?? '')}>
-                      {r.fields.Status ?? '—'}
+                    <span className={statusBadge(r.fields.Change_Status ?? '')}>
+                      {r.fields.Change_Status ?? '—'}
                     </span>
                   </td>
                   <td>
-                    <span className="truncate" title={r.fields.Proposed_Change} style={{ maxWidth: 300 }}>
-                      {snippet(r.fields.Proposed_Change)}
+                    <span title={r.fields.Problem_Observed} style={{ maxWidth: 200, display: 'inline-block' }}>
+                      {snippet(r.fields.Problem_Observed, 80)}
+                    </span>
+                  </td>
+                  <td>
+                    <span title={r.fields.Proposed_Prompt_Text} style={{ maxWidth: 260, display: 'inline-block' }}>
+                      {snippet(r.fields.Proposed_Prompt_Text)}
                     </span>
                   </td>
                   <td>
@@ -111,7 +121,7 @@ export default async function PromptChangesPage() {
                       </div>
                     ) : '—'}
                   </td>
-                  <td>{fmt(r.fields.Applied_At)}</td>
+                  <td>{fmt(r.fields.Pushed_Datetime)}</td>
                 </tr>
               ))}
             </tbody>
