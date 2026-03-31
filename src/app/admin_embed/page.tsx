@@ -3,15 +3,13 @@
 /**
  * /admin_embed — Softr-embeddable chatbot action panel
  *
- * Reads ?recordId= from the URL (set by Softr when building the iframe src).
- * Polls for up to 5 s in case Softr injects the param after initial load.
- * Also reads a hidden #softr-user-email element if present (Softr template var).
+ * The Softr embed script (softr-embed-code.txt) is responsible for waiting
+ * until BOTH ?recordId= and ?userEmail= are fully resolved before creating
+ * this iframe. This page therefore reads params synchronously on mount —
+ * no polling needed here.
  *
- * Embed in Softr as a Custom Code / Embed block pointing to:
- *   https://chatbase-admin.vercel.app/admin_embed?recordId={RECORD_ID}
- *
- * Softr logged-in email capture (optional — add to the same Softr page):
- *   <span id="softr-user-email" style="display:none">{LOGGED_IN_USER:EMAIL}</span>
+ * iframe src pattern set by the Softr embed script:
+ *   https://chatbase-admin.vercel.app/admin_embed?recordId=recXXX&userEmail=user@example.com
  */
 
 import { useState, useEffect, useTransition } from 'react';
@@ -28,40 +26,6 @@ function fmt(iso: string | undefined) {
       month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
     });
   } catch { return iso; }
-}
-
-// Reads recordId from the URL, waiting up to maxWait ms if not yet present.
-function waitForRecordId(
-  maxWait = 5000,
-  interval = 100,
-): Promise<string | null> {
-  return new Promise((resolve) => {
-    const start = Date.now();
-    const check = () => {
-      const params = new URLSearchParams(window.location.search);
-      const id = params.get('recordId');
-      if (id) return resolve(id);
-      if (Date.now() - start >= maxWait) return resolve(null);
-      setTimeout(check, interval);
-    };
-    check();
-  });
-}
-
-// Reads Softr's injected user email from a hidden element, with same polling.
-function waitForSoftrEmail(maxWait = 5000, interval = 100): Promise<string | null> {
-  return new Promise((resolve) => {
-    const start = Date.now();
-    const check = () => {
-      const el = document.getElementById('softr-user-email');
-      const text = el?.textContent?.trim() ?? '';
-      // Softr replaces its template vars; skip if still a placeholder
-      if (text && !text.includes('{') && !text.includes('}')) return resolve(text);
-      if (Date.now() - start >= maxWait) return resolve(null);
-      setTimeout(check, interval);
-    };
-    check();
-  });
 }
 
 // ── sub-components ────────────────────────────────────────────────────────────
@@ -161,22 +125,22 @@ export default function AdminEmbedPage() {
   }
 
   useEffect(() => {
-    // userEmail is passed directly in the URL by Softr (?userEmail=...) —
-    // Softr replaces {LOGGED_IN_USER:EMAIL} before the script runs, so it
-    // arrives as a resolved string in the iframe src, no polling needed.
+    // Both params are guaranteed present by the Softr embed script before
+    // this iframe is created — read them synchronously.
     const params = new URLSearchParams(window.location.search);
-    const emailParam = params.get('userEmail');
-    if (emailParam) setUserEmail(emailParam);
+    const rid = params.get('recordId');
+    const email = params.get('userEmail');
 
-    waitForRecordId().then((rid) => {
-      if (!rid) {
-        setErrMsg('No ?recordId= found in URL after 5 s. Check the embed src.');
-        setPhase('error');
-        return;
-      }
-      setRecordId(rid);
-      loadData(rid);
-    });
+    if (email) setUserEmail(email);
+
+    if (!rid) {
+      setErrMsg('Missing ?recordId= — check the Softr embed script.');
+      setPhase('error');
+      return;
+    }
+
+    setRecordId(rid);
+    loadData(rid);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
