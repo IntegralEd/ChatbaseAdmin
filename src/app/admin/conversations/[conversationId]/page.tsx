@@ -55,7 +55,7 @@ export default async function ConversationDetailPage({ params }: Props) {
   let messages: AirtableRecord<MessageFields>[] = [];
   if (msgRecords.status === 'fulfilled' && conv) {
     messages = msgRecords.value.filter((m) =>
-      m.fields.Conversation?.includes(conv.id),
+      m.fields.Conversation_Link?.includes(conv.id),
     );
   }
 
@@ -102,21 +102,21 @@ export default async function ConversationDetailPage({ params }: Props) {
               <strong>{msg.fields.Role === 'assistant' ? 'Assistant' : 'User'}</strong>
               {' · '}
               {fmt(msg.fields.Created_At)}
-              {msg.fields.Feedback && (
+              {msg.fields.Feedback_Chatbase && (
                 <>
                   {' · '}
-                  <span className={`badge badge-${msg.fields.Feedback}`}>
-                    {msg.fields.Feedback}
+                  <span className={`badge badge-${msg.fields.Feedback_Chatbase}`}>
+                    {msg.fields.Feedback_Chatbase}
                   </span>
                 </>
               )}
             </div>
-            <div style={{ whiteSpace: 'pre-wrap' }}>{msg.fields.Content}</div>
+            <div style={{ whiteSpace: 'pre-wrap' }}>{msg.fields.Message_Content}</div>
             <div className="message-actions">
               <FeedbackButtons
                 messageId={msg.fields.Message_ID ?? msg.id}
                 conversationId={conversationId}
-                currentFeedback={msg.fields.Feedback ?? null}
+                currentFeedback={(msg.fields.Feedback_Chatbase as 'positive' | 'negative' | null) ?? null}
               />
             </div>
           </div>

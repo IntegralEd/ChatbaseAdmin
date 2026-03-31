@@ -49,7 +49,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   try {
     // Fetch the Message_Review record
     const review = await getRecord<MessageReviewFields>(TABLES.MESSAGE_REVIEWS, recordId);
-    const { Rating, Message: messageLinks } = review.fields;
+    const { Internal_Rating: Rating, Message_Link: messageLinks } = review.fields;
 
     if (!messageLinks || messageLinks.length === 0) {
       // No linked message — nothing to sync
@@ -64,7 +64,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     // Fetch the linked Chatbase_Messages record
     const messageRecordId = messageLinks[0];
     const messageRecord = await getRecord<MessageFields>(TABLES.MESSAGES, messageRecordId);
-    const { Message_ID, Conversation: convLinks } = messageRecord.fields;
+    const { Message_ID, Conversation_Link: convLinks } = messageRecord.fields;
 
     if (!Message_ID) {
       return NextResponse.json({ received: true, synced: false, reason: 'Message has no Message_ID' });
