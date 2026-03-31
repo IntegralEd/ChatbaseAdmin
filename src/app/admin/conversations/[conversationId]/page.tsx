@@ -71,10 +71,10 @@ export default async function ConversationDetailPage({ params }: Props) {
         <div className="card mb-2" style={{ display: 'inline-block', marginBottom: '1.5rem' }}>
           <table style={{ fontSize: '0.85rem' }}>
             <tbody>
-              <tr><td style={{ color: 'var(--color-text-muted)', paddingRight: '1rem' }}>User email</td><td>{conv.fields.User_Email || '—'}</td></tr>
+              <tr><td style={{ color: 'var(--color-text-muted)', paddingRight: '1rem' }}>User ID</td><td>{conv.fields.User_ID || '—'}</td></tr>
               <tr><td style={{ color: 'var(--color-text-muted)' }}>Started</td><td>{fmt(conv.fields.Started_At)}</td></tr>
               <tr><td style={{ color: 'var(--color-text-muted)' }}>Messages</td><td>{conv.fields.Message_Count ?? messages.length}</td></tr>
-              <tr><td style={{ color: 'var(--color-text-muted)' }}>Last synced</td><td>{fmt(conv.fields.Last_Synced)}</td></tr>
+              <tr><td style={{ color: 'var(--color-text-muted)' }}>Last message</td><td>{fmt(conv.fields.Last_Message_At)}</td></tr>
             </tbody>
           </table>
         </div>

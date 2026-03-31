@@ -6,7 +6,7 @@
  *
  * Body:
  *   {
- *     chatbotId: string,       — Chatbase external ID (Chatbase__Idenitifer)
+ *     chatbotId: string,       — Chatbase external ID (Chatbase_Chatbot_ID)
  *     sourceText?: string,
  *     instructions?: string,
  *     dryRun?: boolean         — if true, return the payload without calling Chatbase
@@ -80,20 +80,19 @@ export async function POST(req: Request): Promise<NextResponse> {
     // Update Chatbase
     await updateChatbot(chatbotId, payload);
 
-    // Find Airtable record by Chatbase__Idenitifer (double underscore, misspelled)
+    // Find Airtable record by Chatbase_Chatbot_ID (double underscore, misspelled)
     const records = await listRecords<ChatbotFields>(TABLES.CHATBOTS, {
-      filterByFormula: `{Chatbase__Idenitifer} = "${chatbotId}"`,
+      filterByFormula: `{Chatbase_Chatbot_ID} = "${chatbotId}"`,
       maxRecords: 1,
     });
 
     if (records.length > 0) {
-      const airtableFields: Partial<ChatbotFields> = {
-        Last_Synced: new Date().toISOString(),
-      };
-      if (sourceText !== undefined) airtableFields.Source_Text = sourceText;
-      if (instructions !== undefined) airtableFields.Instructions = instructions;
-
-      await updateRecord<ChatbotFields>(TABLES.CHATBOTS, records[0].id, airtableFields);
+      const airtableFields: Partial<ChatbotFields> = {};
+      if (instructions !== undefined) airtableFields['Chatbots instructions'] = instructions;
+      // sourceText has no direct Airtable field — Chatbase is the source of truth
+      if (Object.keys(airtableFields).length > 0) {
+        await updateRecord<ChatbotFields>(TABLES.CHATBOTS, records[0].id, airtableFields);
+      }
     }
 
     return NextResponse.json({ success: true, dryRun: false, applied: true }, { status: 200 });

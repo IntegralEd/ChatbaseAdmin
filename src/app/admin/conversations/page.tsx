@@ -56,10 +56,10 @@ export default async function ConversationsPage() {
               <thead>
                 <tr>
                   <th>Conversation ID</th>
-                  <th>User Email</th>
+                  <th>User</th>
                   <th>Started At</th>
                   <th>Messages</th>
-                  <th>Last Synced</th>
+                  <th>Last Message</th>
                 </tr>
               </thead>
               <tbody>
@@ -72,10 +72,10 @@ export default async function ConversationsPage() {
                         </span>
                       </Link>
                     </td>
-                    <td>{r.fields.User_Email ?? <span className="text-muted">—</span>}</td>
+                    <td>{r.fields.User_ID ?? <span className="text-muted">—</span>}</td>
                     <td>{fmt(r.fields.Started_At)}</td>
                     <td>{r.fields.Message_Count ?? '—'}</td>
-                    <td>{fmt(r.fields.Last_Synced)}</td>
+                    <td>{fmt(r.fields.Last_Message_At)}</td>
                   </tr>
                 ))}
               </tbody>

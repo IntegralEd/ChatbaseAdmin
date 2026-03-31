@@ -9,7 +9,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { listRecords } from '@/lib/airtable';
 import { TABLES } from '@/lib/constants';
-import type { SyncJobFields, PromptChangeRequestFields } from '@/lib/mappers';
+import type { SyncJobFields } from '@/lib/mappers';
 import RunSyncButton from './RunSyncButton';
 
 export const metadata: Metadata = { title: 'Dashboard' };
@@ -17,14 +17,6 @@ export const metadata: Metadata = { title: 'Dashboard' };
 // Revalidate every 60 seconds so dashboard stays reasonably fresh
 export const revalidate = 60;
 
-function statusBadge(status: string) {
-  const map: Record<string, string> = {
-    success: 'badge-success',
-    error: 'badge-error',
-    running: 'badge-running',
-  };
-  return `badge ${map[status] ?? 'badge-default'}`;
-}
 
 function fmt(iso: string | undefined) {
   if (!iso) return '—';
@@ -40,7 +32,7 @@ export default async function DashboardPage() {
   const [conversations, messages, promptChanges, syncJobs] = await Promise.allSettled([
     listRecords(TABLES.CONVERSATIONS, { maxRecords: 1000 }),
     listRecords(TABLES.MESSAGES, { maxRecords: 1000 }),
-    listRecords<PromptChangeRequestFields>(TABLES.PROMPT_CHANGE_REQUESTS, {
+    listRecords(TABLES.PROMPT_CHANGE_REQUESTS, {
       filterByFormula: 'OR({Change_Status}="open",{Change_Status}="pending")',
     }),
     listRecords<SyncJobFields>(TABLES.SYNC_JOBS, {
@@ -84,35 +76,33 @@ export default async function DashboardPage() {
           <table>
             <thead>
               <tr>
-                <th>Type</th>
-                <th>Status</th>
                 <th>Started</th>
-                <th>Completed</th>
-                <th>Records</th>
+                <th>Duration</th>
+                <th>Imported</th>
                 <th>Error</th>
               </tr>
             </thead>
             <tbody>
-              {recentJobs.map((job) => (
-                <tr key={job.id}>
-                  <td>{job.fields.Job_Type ?? '—'}</td>
-                  <td>
-                    <span className={statusBadge(job.fields.Status ?? '')}>
-                      {job.fields.Status ?? '—'}
-                    </span>
-                  </td>
-                  <td>{fmt(job.fields.Started_At)}</td>
-                  <td>{fmt(job.fields.Completed_At)}</td>
-                  <td>{job.fields.Records_Processed ?? 0}</td>
-                  <td>
-                    {job.fields.Error_Message ? (
-                      <span className="truncate" title={job.fields.Error_Message} style={{ color: 'var(--color-danger)' }}>
-                        {job.fields.Error_Message}
-                      </span>
-                    ) : '—'}
-                  </td>
-                </tr>
-              ))}
+              {recentJobs.map((job) => {
+                const ms = job.fields.Started_At && job.fields.Completed_At
+                  ? new Date(job.fields.Completed_At).getTime() - new Date(job.fields.Started_At).getTime()
+                  : null;
+                const dur = ms === null ? '—' : ms < 1000 ? `${ms}ms` : `${(ms/1000).toFixed(1)}s`;
+                return (
+                  <tr key={job.id}>
+                    <td>{fmt(job.fields.Started_At)}</td>
+                    <td>{dur}</td>
+                    <td>{job.fields.Records_Imported ?? '—'}</td>
+                    <td>
+                      {job.fields.Error_Log ? (
+                        <span className="truncate" title={job.fields.Error_Log} style={{ color: 'var(--color-danger)' }}>
+                          {job.fields.Error_Log}
+                        </span>
+                      ) : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

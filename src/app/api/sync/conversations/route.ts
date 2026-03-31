@@ -54,7 +54,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   try {
     jobRecord = await createRecord<SyncJobFields>(
       TABLES.SYNC_JOBS,
-      syncJobStartFields('sync_conversations'),
+      syncJobStartFields(),
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -68,9 +68,9 @@ export async function POST(req: Request): Promise<NextResponse> {
     let chatbotRecords = await listRecords<ChatbotFields>(TABLES.CHATBOTS);
 
     if (body.chatbotId) {
-      // Filter to just the requested chatbot (match by Chatbase__Idenitifer)
+      // Filter to just the requested chatbot (match by Chatbase_Chatbot_ID)
       chatbotRecords = chatbotRecords.filter(
-        (r) => r.fields.Chatbase__Idenitifer === body.chatbotId,
+        (r) => r.fields.Chatbase_Chatbot_ID === body.chatbotId,
       );
       if (chatbotRecords.length === 0) {
         await updateRecord<SyncJobFields>(TABLES.SYNC_JOBS, jobId, syncJobErrorFields(`Chatbot not found: ${body.chatbotId}`));
@@ -81,7 +81,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     let totalRecords = 0;
 
     for (const chatbot of chatbotRecords) {
-      const chatbaseId = chatbot.fields.Chatbase__Idenitifer;
+      const chatbaseId = chatbot.fields.Chatbase_Chatbot_ID;
       if (!chatbaseId) continue;
 
       const conversations = await fetchAllConversations(chatbaseId);

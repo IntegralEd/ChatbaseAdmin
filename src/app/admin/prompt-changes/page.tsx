@@ -59,12 +59,7 @@ export default async function PromptChangesPage() {
     <div>
       <h1>Prompt Change Requests</h1>
 
-      {/* Schema mismatch notice */}
-      <div className="alert alert-warn">
-        <strong>Schema note:</strong> The <code>Source_Message_Links</code> field on Prompt_Change_Requests
-        links to <em>Conversations</em> (not Messages) — the field name is misleading.
-        See <code>src/lib/mappers.ts</code> for details.
-      </div>
+      {/* Source_Message_Links now correctly links to Chatbase_Messages (schema fixed 2026-03-30) */}
 
       {error && (
         <div className="alert alert-error">Failed to load prompt changes: {error}</div>

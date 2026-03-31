@@ -35,7 +35,7 @@ export async function GET(req: Request): Promise<NextResponse> {
 
   let jobId = '';
   try {
-    const job = await createRecord<SyncJobFields>(TABLES.SYNC_JOBS, syncJobStartFields('cron_conversations', 'vercel-cron'));
+    const job = await createRecord<SyncJobFields>(TABLES.SYNC_JOBS, syncJobStartFields());
     jobId = job.id;
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
@@ -46,7 +46,7 @@ export async function GET(req: Request): Promise<NextResponse> {
     let total = 0;
 
     for (const chatbot of chatbots) {
-      const chatbaseId = chatbot.fields.Chatbase__Idenitifer;
+      const chatbaseId = chatbot.fields.Chatbase_Chatbot_ID;
       if (!chatbaseId) continue;
 
       const conversations = await fetchAllConversations(chatbaseId);

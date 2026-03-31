@@ -12,14 +12,6 @@ import type { SyncJobFields } from '@/lib/mappers';
 export const metadata: Metadata = { title: 'Sync Jobs' };
 export const revalidate = 30;
 
-function statusBadge(status: string) {
-  const map: Record<string, string> = {
-    success: 'badge-success',
-    error: 'badge-error',
-    running: 'badge-running',
-  };
-  return `badge ${map[status] ?? 'badge-default'}`;
-}
 
 function fmt(iso: string | undefined) {
   if (!iso) return '—';
@@ -72,36 +64,30 @@ export default async function SyncJobsPage() {
             <table>
               <thead>
                 <tr>
-                  <th>Type</th>
-                  <th>Status</th>
-                  <th>Triggered By</th>
                   <th>Started</th>
                   <th>Duration</th>
-                  <th>Records</th>
+                  <th>Imported</th>
+                  <th>Updated</th>
+                  <th>Cursor</th>
                   <th>Error</th>
                 </tr>
               </thead>
               <tbody>
                 {records.map((r) => (
                   <tr key={r.id}>
-                    <td><code style={{ fontSize: '0.8rem' }}>{r.fields.Job_Type ?? '—'}</code></td>
-                    <td>
-                      <span className={statusBadge(r.fields.Status ?? '')}>
-                        {r.fields.Status ?? '—'}
-                      </span>
-                    </td>
-                    <td>{r.fields.Triggered_By ?? '—'}</td>
                     <td>{fmt(r.fields.Started_At)}</td>
                     <td>{duration(r.fields.Started_At, r.fields.Completed_At)}</td>
-                    <td style={{ textAlign: 'right' }}>{r.fields.Records_Processed ?? 0}</td>
+                    <td style={{ textAlign: 'right' }}>{r.fields.Records_Imported ?? '—'}</td>
+                    <td style={{ textAlign: 'right' }}>{r.fields.Records_Updated ?? '—'}</td>
+                    <td><code style={{ fontSize: '0.8rem' }}>{r.fields.Cursor_Used ?? '—'}</code></td>
                     <td>
-                      {r.fields.Error_Message ? (
+                      {r.fields.Error_Log ? (
                         <span
                           className="truncate"
-                          title={r.fields.Error_Message}
+                          title={r.fields.Error_Log}
                           style={{ color: 'var(--color-danger)', maxWidth: 260 }}
                         >
-                          {r.fields.Error_Message}
+                          {r.fields.Error_Log}
                         </span>
                       ) : '—'}
                     </td>

@@ -1,58 +1,88 @@
 /**
  * Mappers between Chatbase API types and Airtable field shapes.
  *
- * SCHEMA NOTES:
+ * Field names are taken verbatim from schema-registry.csv (2026-03-30).
  *
- * Field name gotcha: `Chatbase__Idenitifer` — double underscore, misspelled
- * "Identifier". Use exactly as-is when reading/writing Chatbase_Chatbots.
+ * NOTE: Chatbase_Chatbot_ID replaced the old Chatbase__Idenitifer field
+ * (double underscore, misspelled). Use Chatbase_Chatbot_ID everywhere.
  *
- * Schema mismatch (documented for future devs):
- *   - Prompt_Change_Requests.Source_Message_Links → links to Chatbase_Conversations
- *     (tblV1K2KQUrI8PAmt), NOT Chatbase_Messages. The field name is misleading.
- *   - Content_Change_Requests.Source_Message_Links → correctly links to
- *     Chatbase_Messages (tblAMrcshFzNUYx5g). Same field name, different target.
+ * Prompt_Change_Requests.Source_Message_Links now correctly links to
+ * Chatbase_Messages (tblAMrcshFzNUYx5g). The previous schema mismatch
+ * (it used to link to Conversations) has been fixed in the schema.
  */
 
 import type { ChatbaseConversation, ChatbaseMessage } from './chatbase';
 
-// ── Airtable field shapes ─────────────────────────────────────────────────────
+// ── Chatbase_Chatbots ─────────────────────────────────────────────────────────
 
 export interface ChatbotFields {
-  // Note: double underscore + misspelled — must match exactly
-  Chatbase__Idenitifer: string;
-  Name: string;
-  Instructions: string;
-  Source_Text: string;
-  Last_Synced: string;
+  Chatbase_Chatbot_ID: string;
+  Chatbot_Name: string;
+  'Chatbots instructions': string;
+  'Chatbots model': string;
+  'Chatbots status': string;
+  'Chatbots visibility': string;
+  'Chatbots created at': string;
+  'Chatbots last message at': string;
+  'Chatbots last trained at': string;
+  'Chatbots num of characters': number;
+  'Chatbots temp': number;
+  'Chatbots initial messages': string;
+  'Chatbots styles theme': string;
+  'Chatbots styles button color': string;
+  'Chatbots styles align chat button': string;
+  'Chatbots only allow on added domains': boolean;
 }
+
+// ── Chatbase_Conversations ────────────────────────────────────────────────────
 
 export interface ConversationFields {
   Conversation_ID: string;
-  Chatbot: string[]; // multipleRecordLinks — array of Airtable record IDs
-  User_Email: string;
+  Chatbot_Link: string[];       // multipleRecordLinks → Chatbase_Chatbots
+  User_ID: string;              // user identifier from Chatbase (email or ID)
   Started_At: string;
+  Last_Message_At: string;
   Message_Count: number;
-  Last_Synced: string;
+  Has_Negative_Feedback: boolean;
+  Title: string;
+  Primary_Topic: string;
+  Topics_Raw: string;
+  External_Conversation_ID: string;
 }
+
+// ── Chatbase_Messages ─────────────────────────────────────────────────────────
 
 export interface MessageFields {
   Message_ID: string;
-  Conversation: string[]; // multipleRecordLinks
+  Conversation_Link: string[];  // multipleRecordLinks → Chatbase_Conversations
   Role: 'user' | 'assistant';
-  Content: string;
-  Feedback: 'positive' | 'negative' | null;
+  Message_Content: string;      // was Content
+  Feedback_Chatbase: string;    // singleLineText; was Feedback (singleSelect)
   Created_At: string;
-  Last_Synced: string;
+  Message_Sequence: number;
+  Contains_URL: boolean;
+  Visible_URL: string;
+  Needs_Review: boolean;
 }
 
+// ── Message_Reviews ───────────────────────────────────────────────────────────
+
 export interface MessageReviewFields {
-  Message: string[]; // multipleRecordLinks → Chatbase_Messages
-  Reviewer: string[]; // multipleRecordLinks → Users
-  Rating: string;
-  Notes: string;
-  Reviewed_At: string;
-  Status: string;
+  Message_Link: string[];       // multipleRecordLinks → Chatbase_Messages
+  Reviewer: string[];           // multipleRecordLinks → Users
+  Internal_Rating: string;
+  Send_To_Chatbase: boolean;
+  Feedback_Sync_Status: string;
+  Feedback_Sync_At: string;
+  Issue_Type: string;
+  Internal_Notes: string;
+  Suggested_Response: string;
+  Suggested_URL: string;
+  Needs_Prompt_Fix: boolean;
+  Needs_Content_Fix: boolean;
 }
+
+// ── Prompt_Change_Requests ────────────────────────────────────────────────────
 
 export interface PromptChangeRequestFields {
   Change_Title: string;
@@ -61,31 +91,24 @@ export interface PromptChangeRequestFields {
   Proposed_Prompt_Text: string;
   Proposed_Source_Change: string;
   Change_Status: string;
-  // ⚠️ Schema mismatch: field name says "Message_Links" but links to Conversations
+  // Source_Message_Links correctly links to Chatbase_Messages (schema fixed 2026-03-30)
   Source_Message_Links: string[];
   Requested_By: string[];
   Pushed_Datetime: string;
   Chatbase_Update_Result: string;
 }
 
-export interface ContentChangeRequestFields {
-  Title: string;
-  Proposed_Change: string;
-  Status: string;
-  // Correctly links to Chatbase_Messages
-  Source_Message_Links: string[];
-  Approved_By: string[];
-  Applied_At: string;
-}
+// ── Sync_Jobs ─────────────────────────────────────────────────────────────────
+// Note: no Status, Job_Type, or Triggered_By fields in this table.
 
 export interface SyncJobFields {
-  Job_Type: string;
-  Status: 'running' | 'success' | 'error';
   Started_At: string;
   Completed_At: string;
-  Records_Processed: number;
-  Error_Message: string;
-  Triggered_By: string;
+  Cursor_Used: string;
+  Records_Imported: string;   // singleLineText
+  Records_Updated: string;    // singleLineText
+  Error_Log: string;
+  Chatbot_Link: string[];     // multipleRecordLinks → Chatbase_Chatbots
 }
 
 // ── Mappers ───────────────────────────────────────────────────────────────────
@@ -97,12 +120,12 @@ export function conversationToAirtableFields(
   const fields: Partial<ConversationFields> = {
     Conversation_ID: conv.id,
     Started_At: conv.createdAt,
-    Last_Synced: new Date().toISOString(),
+    Last_Message_At: conv.updatedAt,
   };
 
-  if (conv.customerEmail) fields.User_Email = conv.customerEmail;
+  if (conv.customerEmail) fields.User_ID = conv.customerEmail;
   if (conv.messageCount !== undefined) fields.Message_Count = conv.messageCount;
-  if (chatbotRecordId) fields.Chatbot = [chatbotRecordId];
+  if (chatbotRecordId) fields.Chatbot_Link = [chatbotRecordId];
 
   return fields;
 }
@@ -114,50 +137,35 @@ export function messageToAirtableFields(
   const fields: Partial<MessageFields> = {
     Message_ID: msg.id,
     Role: msg.role,
-    Content: msg.content,
+    Message_Content: msg.content,
     Created_At: msg.createdAt,
-    Last_Synced: new Date().toISOString(),
   };
 
-  // Airtable singleSelect does not accept null as a string — omit if null
-  if (msg.feedback !== undefined && msg.feedback !== null) {
-    fields.Feedback = msg.feedback;
-  }
-
-  if (conversationRecordId) fields.Conversation = [conversationRecordId];
+  if (msg.feedback) fields.Feedback_Chatbase = msg.feedback;
+  if (conversationRecordId) fields.Conversation_Link = [conversationRecordId];
 
   return fields;
 }
 
-export function syncJobStartFields(
-  jobType: string,
-  triggeredBy = 'api',
-): Partial<SyncJobFields> {
+export function syncJobStartFields(): Partial<SyncJobFields> {
   return {
-    Job_Type: jobType,
-    Status: 'running',
     Started_At: new Date().toISOString(),
-    Triggered_By: triggeredBy,
-    Records_Processed: 0,
+    Records_Imported: '0',
+    Records_Updated: '0',
   };
 }
 
-export function syncJobSuccessFields(recordsProcessed: number): Partial<SyncJobFields> {
+export function syncJobSuccessFields(imported: number, updated = 0): Partial<SyncJobFields> {
   return {
-    Status: 'success',
     Completed_At: new Date().toISOString(),
-    Records_Processed: recordsProcessed,
+    Records_Imported: String(imported),
+    Records_Updated: String(updated),
   };
 }
 
-export function syncJobErrorFields(
-  error: string,
-  recordsProcessed = 0,
-): Partial<SyncJobFields> {
+export function syncJobErrorFields(error: string): Partial<SyncJobFields> {
   return {
-    Status: 'error',
     Completed_At: new Date().toISOString(),
-    Records_Processed: recordsProcessed,
-    Error_Message: error,
+    Error_Log: error,
   };
 }

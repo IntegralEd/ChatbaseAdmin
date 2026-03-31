@@ -61,7 +61,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     if (records.length > 0) {
       // Airtable singleSelect cannot be set to null via the API — use empty string to clear
       await updateRecord<MessageFields>(TABLES.MESSAGES, records[0].id, {
-        Feedback: feedback ?? undefined,
+        Feedback_Chatbase: feedback ?? undefined,
       } as Partial<MessageFields>);
     }
 

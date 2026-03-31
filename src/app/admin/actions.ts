@@ -36,7 +36,7 @@ export async function syncAll(): Promise<SyncResult> {
   // Create sync job record
   let jobId = '';
   try {
-    const job = await createRecord<SyncJobFields>(TABLES.SYNC_JOBS, syncJobStartFields('sync_full', 'dashboard'));
+    const job = await createRecord<SyncJobFields>(TABLES.SYNC_JOBS, syncJobStartFields());
     jobId = job.id;
   } catch (err) {
     return { ok: false, conversations: 0, messages: 0, jobId: '', error: String(err) };
@@ -48,7 +48,7 @@ export async function syncAll(): Promise<SyncResult> {
     let totalMessages = 0;
 
     for (const chatbot of chatbots) {
-      const chatbaseId = chatbot.fields.Chatbase__Idenitifer;
+      const chatbaseId = chatbot.fields.Chatbase_Chatbot_ID;
       if (!chatbaseId) continue;
 
       // ── Sync conversations ────────────────────────────────────────────────
