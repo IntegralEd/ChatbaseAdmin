@@ -19,7 +19,7 @@ import { z } from 'zod';
 import { requireAdminToken } from '@/lib/auth';
 import { TABLES } from '@/lib/constants';
 import { listRecords, updateRecord } from '@/lib/airtable';
-import { patchMessageFeedback } from '@/lib/chatbase';
+// patchMessageFeedback removed — Chatbase v1 has no feedback API endpoint.
 import type { MessageFields } from '@/lib/mappers';
 
 const FeedbackSchema = z.object({
@@ -49,10 +49,8 @@ export async function POST(req: Request): Promise<NextResponse> {
   const { messageId, conversationId, feedback }: FeedbackBody = parsed.data;
 
   try {
-    // 1. Update Chatbase
-    await patchMessageFeedback(conversationId, messageId, feedback);
-
-    // 2. Find and update Airtable record
+    // Chatbase v1 has no message feedback API — update Airtable only.
+    // Find and update Airtable record
     const records = await listRecords<MessageFields>(TABLES.MESSAGES, {
       filterByFormula: `{Message_ID} = "${messageId}"`,
       maxRecords: 1,

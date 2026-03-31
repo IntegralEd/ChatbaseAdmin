@@ -2,11 +2,8 @@
 
 import { TABLES } from '@/lib/constants';
 import { listRecords, getRecord, updateRecord } from '@/lib/airtable';
-import { patchMessageFeedback, updateChatbot } from '@/lib/chatbase';
-import type { ChatbotUpdatePayload } from '@/lib/chatbase';
+import { updateChatbotData, updateChatbotSettings } from '@/lib/chatbase';
 import {
-  type MessageFields,
-  type ConversationFields,
   type MessageReviewFields,
   type PromptChangeRequestFields,
   type ChatbotFields,
@@ -25,112 +22,74 @@ export interface FeedbackPushResult {
 }
 
 /**
- * Sends all pending Message_Reviews (Send_To_Chatbase=true, not yet sent)
- * to Chatbase as positive/negative feedback, then marks each as 'sent'.
+ * Batches all pending Message_Reviews (Send_To_Chatbase=true, not yet sent,
+ * Message_Feedback_Concat filled) into a single source-text block and pushes
+ * it to Chatbase via POST /update-chatbot-data.
+ *
+ * Requires an Airtable formula field "Message_Feedback_Concat" on Message_Reviews:
+ *   "When Agent said: " & {Response_Snippet_to_Improve}
+ *   & CHAR(10) & "It should have said the following response instead: "
+ *   & {Suggested_Response}
  */
-export async function pushPendingFeedback(): Promise<FeedbackPushResult> {
+export async function pushFeedbackAsSource(
+  chatbotRecordId: string,
+  userEmail?: string,
+): Promise<FeedbackPushResult> {
+  const chatbot = await getRecord<ChatbotFields>(TABLES.CHATBOTS, chatbotRecordId);
+  const chatbaseId = chatbot.fields.Chatbase_Chatbot_ID;
+  if (!chatbaseId) {
+    return { ok: false, sent: 0, errors: 1, details: ['Chatbot has no Chatbase_Chatbot_ID'] };
+  }
+
   const reviews = await listRecords<MessageReviewFields>(TABLES.MESSAGE_REVIEWS, {
-    filterByFormula: `AND({Send_To_Chatbase}=1, {Feedback_Sync_Status}!="sent")`,
+    filterByFormula: `AND({Send_To_Chatbase}=1, {Feedback_Sync_Status}!="sent", {Message_Feedback_Concat}!="")`,
   });
 
-  if (reviews.length === 0) return { ok: true, sent: 0, errors: 0, details: [] };
+  console.log(`[pushFeedbackAsSource] chatbot=${chatbaseId} reviews=${reviews.length}`);
 
-  // Collect unique linked message and conversation record IDs
-  const msgRecordIdSet: Record<string, true> = {};
-  reviews.flatMap((r) => r.fields.Message_Link ?? []).forEach((id) => { msgRecordIdSet[id] = true; });
-  const msgRecordIds = Object.keys(msgRecordIdSet);
-
-  console.log(`[pushFeedback] ${reviews.length} reviews, ${msgRecordIds.length} linked message records`);
-
-  if (msgRecordIds.length === 0) {
-    return { ok: false, sent: 0, errors: reviews.length, details: reviews.map((r) => `Review ${r.id}: no Message_Link`) };
+  if (reviews.length === 0) {
+    return { ok: true, sent: 0, errors: 0, details: ['No pending feedback with Message_Feedback_Concat filled.'] };
   }
 
-  const msgFormula =
-    msgRecordIds.length === 1
-      ? `RECORD_ID()="${msgRecordIds[0]}"`
-      : `OR(${msgRecordIds.map((id) => `RECORD_ID()="${id}"`).join(',')})`;
+  const date = new Date().toISOString().slice(0, 10);
+  const stamp = userEmail ? `${date} — ${userEmail}` : date;
+  const header = `=== Corrective Feedback — ${stamp} ===\n`;
+  const blocks = reviews
+    .map((r) => `---\n${r.fields.Message_Feedback_Concat}`)
+    .join('\n\n');
+  const sourceText = `${header}\n${blocks}`;
 
-  const messages = await listRecords<MessageFields>(TABLES.MESSAGES, {
-    filterByFormula: msgFormula,
-    fields: ['Message_ID', 'Conversation_Link'],
-  });
-  const messageMap = new Map(messages.map((m) => [m.id, m]));
+  console.log(`[pushFeedbackAsSource] sourceText length=${sourceText.length}`);
 
-  const convRecordIdSet: Record<string, true> = {};
-  messages.flatMap((m) => m.fields.Conversation_Link ?? []).forEach((id) => { convRecordIdSet[id] = true; });
-  const convRecordIds = Object.keys(convRecordIdSet);
-
-  const convFormula =
-    convRecordIds.length === 1
-      ? `RECORD_ID()="${convRecordIds[0]}"`
-      : `OR(${convRecordIds.map((id) => `RECORD_ID()="${id}"`).join(',')})`;
-
-  const conversations = await listRecords<ConversationFields>(TABLES.CONVERSATIONS, {
-    filterByFormula: convFormula,
-    fields: ['Conversation_ID'],
-  });
-  const convMap = new Map(conversations.map((c) => [c.id, c]));
-
-  let sent = 0;
-  let errors = 0;
-  const details: string[] = [];
-
-  for (const review of reviews) {
-    const msgRecordId = review.fields.Message_Link?.[0];
-    if (!msgRecordId) {
-      details.push(`Review ${review.id}: no message linked`);
-      errors++;
-      continue;
-    }
-
-    const message = messageMap.get(msgRecordId);
-    if (!message?.fields.Message_ID) {
-      details.push(`Review ${review.id}: message record missing or no Message_ID`);
-      errors++;
-      continue;
-    }
-
-    const convRecordId = message.fields.Conversation_Link?.[0];
-    const conv = convRecordId ? convMap.get(convRecordId) : undefined;
-    if (!conv?.fields.Conversation_ID) {
-      details.push(`Review ${review.id}: conversation not found`);
-      errors++;
-      continue;
-    }
-
-    const ratingRaw = (review.fields.Internal_Rating ?? '').toLowerCase();
-    const feedback: 'positive' | 'negative' | null =
-      ratingRaw === 'positive' ? 'positive' : ratingRaw === 'negative' ? 'negative' : null;
-
-    if (feedback === null) {
-      details.push(`Review ${review.id}: Internal_Rating "${review.fields.Internal_Rating}" is not "positive" or "negative" — skipped`);
-      errors++;
-      continue;
-    }
-
-    const convId = conv.fields.Conversation_ID;
-    const msgId = message.fields.Message_ID;
-    console.log(`[pushFeedback] review=${review.id} convId=${convId} msgId=${msgId} feedback=${feedback}`);
-
-    try {
-      await patchMessageFeedback(convId, msgId, feedback);
-      await updateRecord<MessageReviewFields>(TABLES.MESSAGE_REVIEWS, review.id, {
-        Feedback_Sync_Status: 'sent',
-        Feedback_Sync_At: new Date().toISOString(),
-      });
-      sent++;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      details.push(`Review ${review.id} (conv=${convId} msg=${msgId}): ${msg}`);
-      await updateRecord<MessageReviewFields>(TABLES.MESSAGE_REVIEWS, review.id, {
-        Feedback_Sync_Status: 'error',
-      }).catch(() => null);
-      errors++;
-    }
+  try {
+    await updateChatbotData(chatbaseId, sourceText);
+    const now = new Date().toISOString();
+    await Promise.all(
+      reviews.map((r) =>
+        updateRecord<MessageReviewFields>(TABLES.MESSAGE_REVIEWS, r.id, {
+          Feedback_Sync_Status: 'sent',
+          Feedback_Sync_At: now,
+        }),
+      ),
+    );
+    return { ok: true, sent: reviews.length, errors: 0, details: [] };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.log(`[pushFeedbackAsSource] error: ${msg}`);
+    return { ok: false, sent: 0, errors: reviews.length, details: [msg] };
   }
+}
 
-  return { ok: errors === 0, sent, errors, details };
+/**
+ * Toggle Send_To_Chatbase on a single review — called from the embed panel checkbox.
+ */
+export async function toggleSendToChatbase(
+  reviewId: string,
+  value: boolean,
+): Promise<void> {
+  await updateRecord<MessageReviewFields>(TABLES.MESSAGE_REVIEWS, reviewId, {
+    Send_To_Chatbase: value,
+  });
 }
 
 // ── Push a single prompt change to Chatbase ───────────────────────────────────
@@ -156,16 +115,20 @@ export async function pushPromptChange(
   const chatbaseId = chatbot.fields.Chatbase_Chatbot_ID;
   if (!chatbaseId) return { ok: false, error: 'Chatbot has no Chatbase_Chatbot_ID' };
 
-  const payload: ChatbotUpdatePayload = {};
-  if (change.fields.Proposed_Prompt_Text) payload.instructions = change.fields.Proposed_Prompt_Text;
-  if (change.fields.Proposed_Source_Change) payload.sourceText = change.fields.Proposed_Source_Change;
+  const hasInstructions = !!change.fields.Proposed_Prompt_Text;
+  const hasSource = !!change.fields.Proposed_Source_Change;
 
-  if (!payload.instructions && !payload.sourceText) {
+  if (!hasInstructions && !hasSource) {
     return { ok: false, error: 'No Proposed_Prompt_Text or Proposed_Source_Change to push' };
   }
 
   try {
-    await updateChatbot(chatbaseId, payload);
+    if (hasInstructions) {
+      await updateChatbotSettings(chatbaseId, { instructions: change.fields.Proposed_Prompt_Text });
+    }
+    if (hasSource) {
+      await updateChatbotData(chatbaseId, change.fields.Proposed_Source_Change!);
+    }
     await updateRecord<PromptChangeRequestFields>(TABLES.PROMPT_CHANGE_REQUESTS, changeId, {
       Change_Status: 'pushed',
       Pushed_Datetime: new Date().toISOString(),

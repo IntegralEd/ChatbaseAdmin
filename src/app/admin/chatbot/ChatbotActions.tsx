@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { syncAll, pushPendingFeedback, pushPromptChange } from './actions';
+import { syncAll, pushFeedbackAsSource, pushPromptChange } from './actions';
 
 // ── Sync button ───────────────────────────────────────────────────────────────
 
@@ -39,9 +39,9 @@ export function SyncButton() {
   );
 }
 
-// ── Push all pending feedback ─────────────────────────────────────────────────
+// ── Push feedback as source text ──────────────────────────────────────────────
 
-export function PushFeedbackButton() {
+export function PushFeedbackButton({ chatbotRecordId }: { chatbotRecordId: string }) {
   const [isPending, startTransition] = useTransition();
   const [msg, setMsg] = useState('');
   const [isErr, setIsErr] = useState(false);
@@ -50,12 +50,12 @@ export function PushFeedbackButton() {
     setMsg('');
     setIsErr(false);
     startTransition(async () => {
-      const r = await pushPendingFeedback();
+      const r = await pushFeedbackAsSource(chatbotRecordId);
       if (r.ok) {
-        setMsg(r.sent === 0 ? 'No pending feedback.' : `Sent ${r.sent} feedback item(s).`);
+        setMsg(r.sent === 0 ? (r.details[0] ?? 'Nothing to send.') : `Sent ${r.sent} review(s) as source.`);
         setIsErr(false);
       } else {
-        setMsg(`${r.sent} sent, ${r.errors} error(s): ${r.details.slice(0, 2).join('; ')}`);
+        setMsg(`Error: ${r.details.join('; ')}`);
         setIsErr(true);
       }
     });
@@ -64,7 +64,7 @@ export function PushFeedbackButton() {
   return (
     <span style={{ display: 'inline-flex', gap: '0.75rem', alignItems: 'center' }}>
       <button className="btn btn-primary btn-sm" onClick={handleClick} disabled={isPending}>
-        {isPending ? 'Sending...' : 'Push All Feedback'}
+        {isPending ? 'Sending...' : 'Send Feedback as Source'}
       </button>
       {msg && (
         <span style={{ fontSize: '0.8rem', color: isErr ? 'var(--color-danger)' : 'var(--color-success)' }}>

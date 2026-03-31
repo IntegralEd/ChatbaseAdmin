@@ -5,9 +5,9 @@
 
 import {
   chatbaseConversationsUrl,
-  chatbaseFeedbackUrl,
-  chatbaseChatbotUrl,
 } from './url';
+
+const CHATBASE_API_BASE = 'https://www.chatbase.co/api/v1';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -44,10 +44,6 @@ export interface ChatbaseMessage {
   content: string;
   feedback?: 'positive' | 'negative' | null;
   createdAt?: string;
-}
-
-export interface ChatbaseFeedbackPayload {
-  feedback: 'positive' | 'negative' | null;
 }
 
 export interface ChatbotUpdatePayload {
@@ -129,31 +125,29 @@ export async function fetchAllConversations(
 }
 
 /**
- * PATCH feedback on a specific message.
+ * POST corrective feedback as a source text block to the chatbot's training data.
+ * Uses /update-chatbot-data — confirmed working for v1 chatbots.
  */
-export async function patchMessageFeedback(
-  conversationId: string,
-  messageId: string,
-  feedback: 'positive' | 'negative' | null,
+export async function updateChatbotData(
+  chatbotId: string,
+  sourceText: string,
 ): Promise<void> {
-  const url = chatbaseFeedbackUrl(conversationId, messageId);
-  const payload: ChatbaseFeedbackPayload = { feedback };
-  await chatbaseFetch<unknown>(url, {
-    method: 'PATCH',
-    body: JSON.stringify(payload),
+  await chatbaseFetch<unknown>(`${CHATBASE_API_BASE}/update-chatbot-data`, {
+    method: 'POST',
+    body: JSON.stringify({ chatbotId, sourceText }),
   });
 }
 
 /**
- * PATCH chatbot instructions and/or source text.
+ * POST updated chatbot settings (instructions, model, etc).
+ * Uses /update-chatbot-settings — confirmed working for v1 chatbots.
  */
-export async function updateChatbot(
+export async function updateChatbotSettings(
   chatbotId: string,
-  payload: ChatbotUpdatePayload,
+  payload: Omit<ChatbotUpdatePayload, 'sourceText'>,
 ): Promise<void> {
-  const url = chatbaseChatbotUrl(chatbotId);
-  await chatbaseFetch<unknown>(url, {
-    method: 'PATCH',
-    body: JSON.stringify(payload),
+  await chatbaseFetch<unknown>(`${CHATBASE_API_BASE}/update-chatbot-settings`, {
+    method: 'POST',
+    body: JSON.stringify({ chatbotId, ...payload }),
   });
 }

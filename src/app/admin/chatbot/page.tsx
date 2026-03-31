@@ -97,7 +97,7 @@ export default async function ChatbotPage({
               ({reviews.length} pending)
             </span>
           </h2>
-          <PushFeedbackButton />
+          <PushFeedbackButton chatbotRecordId={recordId} />
         </div>
 
         {reviews.length === 0 ? (

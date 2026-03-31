@@ -76,7 +76,9 @@ export interface MessageReviewFields {
   Feedback_Sync_At: string;
   Issue_Type: string;
   Internal_Notes: string;
+  Response_Snippet_to_Improve: string;  // lookup: Message_Content from linked message
   Suggested_Response: string;
+  Message_Feedback_Concat: string;      // formula: "When Agent said: ... It should have said: ..."
   Suggested_URL: string;
   Needs_Prompt_Fix: boolean;
   Needs_Content_Fix: boolean;
@@ -104,11 +106,12 @@ export interface SyncJobFields {
   Started_At: string;
   Completed_At: string;
   Cursor_Used: string;
-  Records_Imported: string;   // singleLineText
-  Records_Updated: string;    // singleLineText
+  Records_Imported: string;    // singleLineText
+  Records_Updated: string;     // singleLineText
   Error_Log: string;
-  Chatbot_Link: string[];     // multipleRecordLinks → Chatbase_Chatbots
-  Triggered_By: string[];     // multipleRecordLinks → Users (schema 2026-03-31)
+  Chatbot_Link: string[];      // multipleRecordLinks → Chatbase_Chatbots
+  Triggered_By: string[];      // multipleRecordLinks → Users
+  Triggered_By_Email: string;  // singleLineText fallback — add this field in Airtable Sync_Jobs
 }
 
 // ── Mappers ───────────────────────────────────────────────────────────────────
@@ -167,7 +170,11 @@ export function messageToAirtableFields(
   return fields;
 }
 
-export function syncJobStartFields(chatbotRecordId?: string, userRecordId?: string): Partial<SyncJobFields> {
+export function syncJobStartFields(
+  chatbotRecordId?: string,
+  userRecordId?: string,
+  userEmail?: string,
+): Partial<SyncJobFields> {
   const fields: Partial<SyncJobFields> = {
     Started_At: new Date().toISOString(),
     Records_Imported: '0',
@@ -175,6 +182,7 @@ export function syncJobStartFields(chatbotRecordId?: string, userRecordId?: stri
   };
   if (chatbotRecordId) fields.Chatbot_Link = [chatbotRecordId];
   if (userRecordId) fields.Triggered_By = [userRecordId];
+  if (userEmail) fields.Triggered_By_Email = userEmail;
   return fields;
 }
 

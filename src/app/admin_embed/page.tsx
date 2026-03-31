@@ -14,7 +14,7 @@
 
 import { useState, useEffect, useTransition } from 'react';
 import { loadChatbotPanel, type ChatbotPanelData } from './data-actions';
-import { pushPendingFeedback, pushPromptChange } from '@/app/admin/chatbot/actions';
+import { pushFeedbackAsSource, pushPromptChange, toggleSendToChatbase } from '@/app/admin/chatbot/actions';
 import { syncAll } from '@/app/admin/actions';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -58,7 +58,9 @@ function SyncBtn({ onDone, userEmail }: { onDone: () => void; userEmail?: string
   );
 }
 
-function PushFeedbackBtn({ onDone }: { onDone: () => void }) {
+function PushFeedbackBtn({
+  chatbotRecordId, userEmail, onDone,
+}: { chatbotRecordId: string; userEmail?: string; onDone: () => void }) {
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState('');
   const [isErr, setIsErr] = useState(false);
@@ -66,23 +68,116 @@ function PushFeedbackBtn({ onDone }: { onDone: () => void }) {
     <span style={{ display: 'inline-flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
       <button className="btn btn-primary btn-sm" disabled={pending}
         onClick={() => { setMsg(''); start(async () => {
-          const r = await pushPendingFeedback();
-          console.log('[PushFeedback] result:', r);
-          if (r.details.length) console.log('[PushFeedback] details:', r.details);
+          const r = await pushFeedbackAsSource(chatbotRecordId, userEmail);
+          console.log('[PushFeedback]', r);
           if (r.ok) {
-            setMsg(r.sent === 0 ? 'No pending feedback.' : `Sent ${r.sent} item(s).`);
+            setMsg(r.sent === 0 ? r.details[0] ?? 'Nothing to send.' : `Sent ${r.sent} review(s) as source.`);
             setIsErr(false);
-            onDone();
+            if (r.sent > 0) onDone();
           } else {
-            const allDetails = r.details.join(' | ');
-            setMsg(`${r.sent} sent, ${r.errors} error(s) — ${allDetails}`);
+            setMsg(`Error — ${r.details.join(' | ')}`);
             setIsErr(true);
           }
         }); }}>
-        {pending ? 'Sending…' : 'Push All Feedback'}
+        {pending ? 'Sending…' : 'Send Feedback as Source'}
       </button>
       {msg && <StatusMsg msg={msg} isErr={isErr} />}
     </span>
+  );
+}
+
+function SendToChatbaseToggle({ reviewId, checked, onToggle }: {
+  reviewId: string; checked: boolean; onToggle: () => void;
+}) {
+  const [pending, start] = useTransition();
+  return (
+    <input
+      type="checkbox"
+      checked={checked}
+      disabled={pending}
+      style={{ cursor: pending ? 'wait' : 'pointer' }}
+      onChange={(e) => { start(async () => {
+        await toggleSendToChatbase(reviewId, e.target.checked);
+        onToggle();
+      }); }}
+    />
+  );
+}
+
+function FeedbackRow({ review: r, onToggle }: {
+  review: import('@/lib/airtable').AirtableRecord<import('@/lib/mappers').MessageReviewFields>;
+  onToggle: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const concat = r.fields.Message_Feedback_Concat;
+  const snippet = r.fields.Response_Snippet_to_Improve;
+  const suggested = r.fields.Suggested_Response;
+  return (
+    <>
+      <tr>
+        <td style={{ textAlign: 'center' }}>
+          <SendToChatbaseToggle
+            reviewId={r.id}
+            checked={!!r.fields.Send_To_Chatbase}
+            onToggle={onToggle}
+          />
+        </td>
+        <td style={{
+          fontWeight: 600,
+          color: r.fields.Internal_Rating?.toLowerCase() === 'positive'
+            ? 'var(--color-success)'
+            : r.fields.Internal_Rating?.toLowerCase() === 'negative'
+            ? 'var(--color-danger)' : undefined,
+        }}>
+          {r.fields.Internal_Rating ?? '—'}
+        </td>
+        <td>
+          {concat ? (
+            <span
+              style={{ cursor: 'pointer', textDecoration: 'underline dotted', fontSize: '0.8rem' }}
+              title={concat}
+              onClick={() => setExpanded((v) => !v)}
+            >
+              {concat.length > 80 ? concat.slice(0, 80) + '…' : concat}
+            </span>
+          ) : (
+            <span style={{ color: 'var(--color-muted)', fontSize: '0.8rem' }}>
+              No Message_Feedback_Concat — add formula field in Airtable
+            </span>
+          )}
+        </td>
+        <td style={{ color: r.fields.Feedback_Sync_Status === 'error' ? 'var(--color-danger)' : undefined }}>
+          {r.fields.Feedback_Sync_Status || 'pending'}
+        </td>
+      </tr>
+      {expanded && (
+        <tr>
+          <td colSpan={4} style={{ background: 'var(--color-surface, #f9fafb)', padding: '0.75rem 1rem' }}>
+            {snippet && (
+              <div style={{ marginBottom: '0.5rem' }}>
+                <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--color-muted)', marginBottom: '0.2rem' }}>
+                  ORIGINAL
+                </div>
+                <div style={{ fontSize: '0.8rem', whiteSpace: 'pre-wrap' }}>{snippet}</div>
+              </div>
+            )}
+            {suggested && (
+              <div>
+                <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--color-muted)', marginBottom: '0.2rem' }}>
+                  SUGGESTED
+                </div>
+                <div style={{ fontSize: '0.8rem', whiteSpace: 'pre-wrap' }}>{suggested}</div>
+              </div>
+            )}
+            {!snippet && !suggested && (
+              <span style={{ fontSize: '0.8rem', color: 'var(--color-muted)' }}>
+                Response_Snippet_to_Improve and Suggested_Response not filled.
+              </span>
+            )}
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 
@@ -201,7 +296,7 @@ export default function AdminEmbedPage() {
               ({reviews.length} pending)
             </span>
           </h2>
-          <PushFeedbackBtn onDone={reload} />
+          <PushFeedbackBtn chatbotRecordId={recordId!} userEmail={userEmail ?? undefined} onDone={reload} />
         </div>
 
         {reviews.length === 0 ? (
@@ -211,32 +306,15 @@ export default function AdminEmbedPage() {
             <table>
               <thead>
                 <tr>
+                  <th title="Include in next batch send">Send</th>
                   <th>Rating</th>
-                  <th>Issue Type</th>
+                  <th>Feedback</th>
                   <th>Status</th>
-                  <th>Notes</th>
                 </tr>
               </thead>
               <tbody>
                 {reviews.map((r) => (
-                  <tr key={r.id}>
-                    <td style={{
-                      fontWeight: 600,
-                      color: r.fields.Internal_Rating?.toLowerCase() === 'positive'
-                        ? 'var(--color-success)'
-                        : r.fields.Internal_Rating?.toLowerCase() === 'negative'
-                        ? 'var(--color-danger)' : undefined,
-                    }}>
-                      {r.fields.Internal_Rating ?? '—'}
-                    </td>
-                    <td>{r.fields.Issue_Type ?? '—'}</td>
-                    <td style={{ color: r.fields.Feedback_Sync_Status === 'error' ? 'var(--color-danger)' : undefined }}>
-                      {r.fields.Feedback_Sync_Status || 'pending'}
-                    </td>
-                    <td className="truncate" title={r.fields.Internal_Notes ?? ''}>
-                      {r.fields.Internal_Notes ?? '—'}
-                    </td>
-                  </tr>
+                  <FeedbackRow key={r.id} review={r} onToggle={reload} />
                 ))}
               </tbody>
             </table>
