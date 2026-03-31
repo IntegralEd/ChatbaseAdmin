@@ -1,0 +1,168 @@
+================================================================================
+SOFTR EMBED CODE — ChatbaseAdmin Action Panel
+================================================================================
+Last updated: 2026-03-31
+
+PURPOSE
+-------
+Paste this entire block into a Softr "Custom Code" block on any page where
+you want the ChatbaseAdmin action panel embedded.
+
+The script reads ?recordId= from the Softr page URL, waits up to 5 s for
+Softr to finish injecting it (handles Softr's delayed variable resolution),
+then builds a full-frame iframe pointing to:
+
+  https://chatbase-admin.vercel.app/admin_embed?recordId=<recordId>
+
+SOFTR PAGE URL PATTERN
+----------------------
+Your Softr page URL must include ?recordId= for this to work, e.g.:
+
+  https://yourapp.softr.app/chatbot-details?recordId=rectmocM99t0RBss5
+
+Softr can inject the current record's ID dynamically using its variable syntax:
+
+  https://yourapp.softr.app/chatbot-details?recordId={RECORD_ID}
+
+The Airtable record ID to use is the value of the Chatbase_Chatbot_AT_ID
+formula field in the Chatbase_Chatbots table (e.g. rectmocM99t0RBss5).
+
+LOGGED-IN USER EMAIL (optional)
+--------------------------------
+To pass the Softr user's email into the embed panel, also add this hidden
+span anywhere on the same Softr page (outside this Custom Code block):
+
+  <span id="softr-user-email" style="display:none">{LOGGED_IN_USER:EMAIL}</span>
+
+The embed page polls for this element and displays the email in the panel
+header once Softr resolves the template variable.
+
+================================================================================
+COPY EVERYTHING BELOW THIS LINE INTO YOUR SOFTR CUSTOM CODE BLOCK
+================================================================================
+
+<!-- ChatbaseAdmin embed container -->
+<div
+  id="chatbase-admin-embed"
+  style="
+    width: 100%;
+    height: 680px;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #f9fafb;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  "
+>
+  <span style="color: #6b7280; font-size: 14px;">Loading admin panel…</span>
+</div>
+
+<script>
+(function () {
+  var EMBED_BASE_URL = 'https://chatbase-admin.vercel.app/admin_embed';
+  var MAX_WAIT_MS   = 5000;
+  var POLL_INTERVAL = 100;
+
+  /**
+   * Polls window.location.search for ?recordId= up to MAX_WAIT_MS.
+   * Returns a Promise that resolves to the recordId string, or null on timeout.
+   */
+  function waitForRecordId() {
+    return new Promise(function (resolve) {
+      var startTime = Date.now();
+
+      function check() {
+        var params   = new URLSearchParams(window.location.search);
+        var recordId = params.get('recordId');
+
+        if (recordId && recordId.indexOf('rec') === 0) {
+          // Looks like a valid Airtable record ID
+          return resolve(recordId);
+        }
+
+        if (Date.now() - startTime >= MAX_WAIT_MS) {
+          console.warn('[ChatbaseAdmin] ?recordId= not found in URL after ' + MAX_WAIT_MS + ' ms.');
+          return resolve(null);
+        }
+
+        console.log('[ChatbaseAdmin] Waiting for ?recordId= in URL…');
+        setTimeout(check, POLL_INTERVAL);
+      }
+
+      check();
+    });
+  }
+
+  /**
+   * Builds and injects the iframe once we have a recordId.
+   */
+  function injectIframe(recordId) {
+    var container = document.getElementById('chatbase-admin-embed');
+    if (!container) return;
+
+    var src = EMBED_BASE_URL + '?recordId=' + encodeURIComponent(recordId);
+
+    // Pass the Softr page URL as a reference (useful for debugging)
+    src += '&source=' + encodeURIComponent(window.location.href);
+
+    var iframe = document.createElement('iframe');
+    iframe.src = src;
+    iframe.title = 'ChatbaseAdmin Panel';
+    iframe.setAttribute('frameborder', '0');
+    iframe.setAttribute('allowfullscreen', 'true');
+    iframe.style.cssText = [
+      'width: 100%',
+      'height: 100%',
+      'border: none',
+      'border-radius: 8px',
+      'display: block',
+    ].join('; ');
+
+    // Replace loading placeholder with iframe
+    container.innerHTML = '';
+    container.style.alignItems = 'stretch';
+    container.style.justifyContent = 'stretch';
+    container.appendChild(iframe);
+
+    console.log('[ChatbaseAdmin] Iframe injected for recordId:', recordId);
+  }
+
+  function showError(msg) {
+    var container = document.getElementById('chatbase-admin-embed');
+    if (!container) return;
+    container.innerHTML =
+      '<span style="color: #ef4444; font-size: 14px; padding: 16px;">' +
+      msg + '</span>';
+  }
+
+  // ── Entry point ─────────────────────────────────────────────────────────────
+  document.addEventListener('DOMContentLoaded', function () {
+    waitForRecordId().then(function (recordId) {
+      if (!recordId) {
+        showError(
+          'ChatbaseAdmin: no ?recordId= in URL. ' +
+          'Ensure the Softr page URL includes ?recordId={RECORD_ID}.'
+        );
+        return;
+      }
+      injectIframe(recordId);
+    });
+  });
+
+})();
+</script>
+
+================================================================================
+END OF SOFTR CUSTOM CODE BLOCK
+================================================================================
+
+NOTES
+-----
+- The iframe URL is https://chatbase-admin.vercel.app/admin_embed (no trailing slash)
+- Softr's embed container height is set to 680px — adjust as needed
+- The ?source= param is passed for debugging but ignored by the embed page
+- If Softr uses hash-based routing (#recordId=...) instead of query params,
+  change `window.location.search` to `window.location.hash` and parse accordingly
+- To allow the iframe to communicate back to the parent Softr page in the future,
+  add `iframe.setAttribute('allow', 'same-origin')` and use postMessage

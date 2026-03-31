@@ -34,16 +34,19 @@ export interface SyncResult {
  */
 export async function syncAll(force = false): Promise<SyncResult> {
   let jobId = '';
+
+  // Fetch chatbots first so we can link the sync job to the chatbot record(s)
+  let chatbots;
   try {
-    const job = await createRecord<SyncJobFields>(TABLES.SYNC_JOBS, syncJobStartFields());
+    chatbots = await listRecords<ChatbotFields>(TABLES.CHATBOTS);
+    const firstChatbotId = chatbots[0]?.id;
+    const job = await createRecord<SyncJobFields>(TABLES.SYNC_JOBS, syncJobStartFields(firstChatbotId));
     jobId = job.id;
   } catch (err) {
     return { ok: false, conversations: 0, messages: 0, jobId: '', error: String(err) };
   }
 
   try {
-    const chatbots = await listRecords<ChatbotFields>(TABLES.CHATBOTS);
-
     // Load existing conversations for incremental diffing
     const existingConvRecords = await listRecords<ConversationFields>(TABLES.CONVERSATIONS, {
       fields: ['Conversation_ID', 'Last_Message_At', 'Message_Count'],

@@ -99,7 +99,6 @@ export interface PromptChangeRequestFields {
 }
 
 // ── Sync_Jobs ─────────────────────────────────────────────────────────────────
-// Note: no Status, Job_Type, or Triggered_By fields in this table.
 
 export interface SyncJobFields {
   Started_At: string;
@@ -109,6 +108,7 @@ export interface SyncJobFields {
   Records_Updated: string;    // singleLineText
   Error_Log: string;
   Chatbot_Link: string[];     // multipleRecordLinks → Chatbase_Chatbots
+  Triggered_By: string[];     // multipleRecordLinks → Users (schema 2026-03-31)
 }
 
 // ── Mappers ───────────────────────────────────────────────────────────────────
@@ -167,12 +167,14 @@ export function messageToAirtableFields(
   return fields;
 }
 
-export function syncJobStartFields(): Partial<SyncJobFields> {
-  return {
+export function syncJobStartFields(chatbotRecordId?: string): Partial<SyncJobFields> {
+  const fields: Partial<SyncJobFields> = {
     Started_At: new Date().toISOString(),
     Records_Imported: '0',
     Records_Updated: '0',
   };
+  if (chatbotRecordId) fields.Chatbot_Link = [chatbotRecordId];
+  return fields;
 }
 
 export function syncJobSuccessFields(imported: number, updated = 0): Partial<SyncJobFields> {
