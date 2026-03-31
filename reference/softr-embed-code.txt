@@ -3,40 +3,34 @@ SOFTR EMBED CODE — ChatbaseAdmin Action Panel
 ================================================================================
 Last updated: 2026-03-31
 
-PURPOSE
--------
-Paste this entire block into a Softr "Custom Code" block on any page where
-you want the ChatbaseAdmin action panel embedded.
-
 HOW IT WORKS
 ------------
-Softr resolves template variables like {RECORD_ID} and {LOGGED_IN_USER:EMAIL}
-ASYNCHRONOUSLY after its JavaScript initializes — they are NOT ready at
-DOMContentLoaded. This script uses hidden <span> elements and polls until both
-are resolved (non-placeholder strings), then builds the iframe src and injects
-it. The iframe is never created until the URL is completely constructed.
+- recordId   → read directly from ?recordId= in the page URL (already present)
+- userEmail  → polled from a hidden span carrying {LOGGED_IN_USER:EMAIL},
+               which Softr resolves asynchronously after auth initialises
 
-SOFTR PAGE SETUP
-----------------
-This Custom Code block uses {RECORD_ID} and {LOGGED_IN_USER:EMAIL} embedded
-directly in the HTML spans below — no additional spans needed elsewhere on
-the page.
+{RECORD_ID} is NOT used because it doesn't resolve inside Softr Custom Code
+blocks. The recordId comes from the page URL instead (e.g. ?recordId=recXXX).
 
-The Airtable record ID for {RECORD_ID} should be the Chatbase_Chatbots record
-(Chatbase_Chatbot_AT_ID formula field value, e.g. rectmocM99t0RBss5).
-Configure your Softr details page to use the Chatbase_Chatbots table so that
-{RECORD_ID} resolves to the correct chatbot record.
+SOFTR PAGE URL PATTERN
+----------------------
+The Softr page URL must contain ?recordId= pointing to the Airtable record ID
+of the chatbot. Example:
+
+  https://yourapp.softr.app/chatbot-admin-panel?recordId=rectmocM99t0RBss5
+
+When linking to this page from a Softr list view, build the URL dynamically
+using Softr's URL parameter feature so it passes the correct record ID.
 
 ================================================================================
 COPY EVERYTHING BELOW THIS LINE INTO YOUR SOFTR CUSTOM CODE BLOCK
 ================================================================================
 
-<!-- Softr replaces these template variables after JS initializes.
-     The script polls until both are non-placeholder strings.       -->
-<span id="cb-record-id"  style="display:none;line-height:0;font-size:0">{RECORD_ID}</span>
+<!-- Softr resolves {LOGGED_IN_USER:EMAIL} into this span after auth init.
+     The script polls it until it contains a real email address.          -->
 <span id="cb-user-email" style="display:none;line-height:0;font-size:0">{LOGGED_IN_USER:EMAIL}</span>
 
-<!-- Embed container — adjust height to suit your page layout -->
+<!-- Embed container — adjust height to suit your layout -->
 <div
   id="chatbase-admin-embed"
   style="
@@ -56,42 +50,33 @@ COPY EVERYTHING BELOW THIS LINE INTO YOUR SOFTR CUSTOM CODE BLOCK
 <script>
 (function () {
   var EMBED_BASE_URL = 'https://chatbase-admin.vercel.app/admin_embed';
-  var MAX_WAIT_MS    = 8000;   // wait up to 8 s for Softr to resolve vars
-  var POLL_INTERVAL  = 150;    // check every 150 ms
+  var MAX_WAIT_MS    = 8000;  // wait up to 8 s for Softr to resolve email
+  var POLL_INTERVAL  = 150;   // check every 150 ms
+
+  // recordId is already in the page URL — read it immediately.
+  var urlParams = new URLSearchParams(window.location.search);
+  var RECORD_ID = urlParams.get('recordId');
 
   /**
-   * Polls the hidden spans until both {RECORD_ID} and {LOGGED_IN_USER:EMAIL}
-   * are replaced by Softr with real values (not placeholder strings).
-   * Resolves with { recordId, userEmail } or null on timeout.
+   * Polls #cb-user-email until Softr replaces {LOGGED_IN_USER:EMAIL}
+   * with the actual email address (no curly braces).
    */
-  function waitForBothParams() {
+  function waitForEmail() {
     return new Promise(function (resolve) {
       var startTime = Date.now();
 
-      function isResolved(text) {
-        return text && text.length > 0 && text.indexOf('{') === -1;
-      }
-
       function check() {
-        var recordIdEl  = document.getElementById('cb-record-id');
-        var userEmailEl = document.getElementById('cb-user-email');
+        var el    = document.getElementById('cb-user-email');
+        var email = el ? el.textContent.trim() : '';
 
-        var recordId  = recordIdEl  ? recordIdEl.textContent.trim()  : '';
-        var userEmail = userEmailEl ? userEmailEl.textContent.trim() : '';
-
-        if (isResolved(recordId) && isResolved(userEmail)) {
-          console.log('[ChatbaseAdmin] Params ready — recordId:', recordId, '| email:', userEmail);
-          return resolve({ recordId: recordId, userEmail: userEmail });
+        if (email && email.indexOf('{') === -1) {
+          console.log('[ChatbaseAdmin] Email resolved:', email);
+          return resolve(email);
         }
 
         if (Date.now() - startTime >= MAX_WAIT_MS) {
-          console.warn('[ChatbaseAdmin] Timeout waiting for Softr variables.',
-            'recordId:', recordId, '| email:', userEmail);
-          // Resolve with whatever is available so we can show a useful error
-          return resolve({
-            recordId:  isResolved(recordId)  ? recordId  : null,
-            userEmail: isResolved(userEmail) ? userEmail : null,
-          });
+          console.warn('[ChatbaseAdmin] Email did not resolve in time:', email);
+          return resolve(null);
         }
 
         setTimeout(check, POLL_INTERVAL);
@@ -109,6 +94,8 @@ COPY EVERYTHING BELOW THIS LINE INTO YOUR SOFTR CUSTOM CODE BLOCK
       + '?recordId='  + encodeURIComponent(recordId)
       + '&userEmail=' + encodeURIComponent(userEmail);
 
+    console.log('[ChatbaseAdmin] Injecting iframe:', src);
+
     var iframe = document.createElement('iframe');
     iframe.src   = src;
     iframe.title = 'ChatbaseAdmin Panel';
@@ -117,8 +104,8 @@ COPY EVERYTHING BELOW THIS LINE INTO YOUR SOFTR CUSTOM CODE BLOCK
     iframe.style.cssText = 'width:100%; height:100%; border:none; border-radius:8px; display:block;';
 
     container.innerHTML = '';
-    container.style.alignItems      = 'stretch';
-    container.style.justifyContent  = 'stretch';
+    container.style.alignItems     = 'stretch';
+    container.style.justifyContent = 'stretch';
     container.appendChild(iframe);
   }
 
@@ -130,22 +117,25 @@ COPY EVERYTHING BELOW THIS LINE INTO YOUR SOFTR CUSTOM CODE BLOCK
   }
 
   // ── Entry point ─────────────────────────────────────────────────────────────
-  // Use 'load' rather than 'DOMContentLoaded' so Softr has more time to
-  // resolve its template variables before we start polling.
   window.addEventListener('load', function () {
-    waitForBothParams().then(function (result) {
-      if (!result.recordId) {
-        showError('ChatbaseAdmin: {RECORD_ID} did not resolve. ' +
-          'Ensure this page uses the Chatbase_Chatbots table as its data source.');
+
+    // Bail early if the URL is missing the recordId param
+    if (!RECORD_ID) {
+      showError('ChatbaseAdmin: no ?recordId= in page URL. ' +
+        'Add ?recordId=<chatbot-airtable-record-id> to the Softr page URL.');
+      return;
+    }
+
+    // Wait for the logged-in user email, then inject
+    waitForEmail().then(function (email) {
+      if (!email) {
+        showError('ChatbaseAdmin: user email did not resolve. ' +
+          'Ensure the visitor is logged in to Softr.');
         return;
       }
-      if (!result.userEmail) {
-        showError('ChatbaseAdmin: {LOGGED_IN_USER:EMAIL} did not resolve. ' +
-          'Ensure the user is logged in to Softr.');
-        return;
-      }
-      injectIframe(result.recordId, result.userEmail);
+      injectIframe(RECORD_ID, email);
     });
+
   });
 
 })();
@@ -157,9 +147,10 @@ END OF SOFTR CUSTOM CODE BLOCK
 
 TROUBLESHOOTING
 ---------------
-- "did not resolve" error → the Softr page's data source must be
-  Chatbase_Chatbots so {RECORD_ID} returns a chatbot record ID
-- User email not resolving → user is not logged in to Softr
-- Blank panel → check browser console for [ChatbaseAdmin] log lines
-- Height too short → change "height: 680px" on the container div
-- Wrong Vercel URL → update EMBED_BASE_URL at top of script
+- "no ?recordId= in page URL"  → add ?recordId=rectmocM99t0RBss5 to the
+  Softr page URL (or configure a dynamic link from a list view)
+- "user email did not resolve" → visitor is not logged in to Softr
+- Blank / nothing shown        → open browser console, look for
+  [ChatbaseAdmin] log lines to see what resolved
+- Wrong app URL                → update EMBED_BASE_URL at top of the script
+- Height too short             → change "height: 680px" on the container div
