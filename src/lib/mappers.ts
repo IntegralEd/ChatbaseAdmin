@@ -11,7 +11,7 @@
  * (it used to link to Conversations) has been fixed in the schema.
  */
 
-import type { ChatbaseConversation, ChatbaseMessage } from './chatbase';
+import type { ChatbaseConversation, ChatbaseEmbeddedMessage, ChatbaseMessage } from './chatbase';
 
 // ── Chatbase_Chatbots ─────────────────────────────────────────────────────────
 
@@ -119,17 +119,37 @@ export function conversationToAirtableFields(
 ): Partial<ConversationFields> {
   const fields: Partial<ConversationFields> = {
     Conversation_ID: conv.id,
-    Started_At: conv.createdAt,
-    Last_Message_At: conv.updatedAt,
+    Started_At: conv.created_at,
+    Last_Message_At: conv.last_message_at,
+    Message_Count: conv.messages?.length ?? 0,
   };
 
-  if (conv.customerEmail) fields.User_ID = conv.customerEmail;
-  if (conv.messageCount !== undefined) fields.Message_Count = conv.messageCount;
   if (chatbotRecordId) fields.Chatbot_Link = [chatbotRecordId];
 
   return fields;
 }
 
+export function embeddedMessageToAirtableFields(
+  msg: ChatbaseEmbeddedMessage,
+  conversationId: string,
+  conversationRecordId?: string,
+): Partial<MessageFields> | null {
+  // Skip messages without an id — can't upsert without a stable key
+  if (!msg.id) return null;
+
+  const fields: Partial<MessageFields> = {
+    Message_ID: msg.id,
+    Role: msg.role,
+    Message_Content: msg.content,
+    Created_At: msg.createdAt ?? new Date().toISOString(),
+  };
+
+  if (conversationRecordId) fields.Conversation_Link = [conversationRecordId];
+
+  return fields;
+}
+
+// Keep for feedback route which still references ChatbaseMessage
 export function messageToAirtableFields(
   msg: ChatbaseMessage,
   conversationRecordId?: string,
@@ -138,7 +158,7 @@ export function messageToAirtableFields(
     Message_ID: msg.id,
     Role: msg.role,
     Message_Content: msg.content,
-    Created_At: msg.createdAt,
+    Created_At: msg.createdAt ?? new Date().toISOString(),
   };
 
   if (msg.feedback) fields.Feedback_Chatbase = msg.feedback;

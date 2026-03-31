@@ -7,16 +7,11 @@ import { CHATBASE_API_BASE, AIRTABLE_BASE_ID } from './constants';
 
 // ── Chatbase ──────────────────────────────────────────────────────────────────
 
-export function chatbaseConversationsUrl(chatbotId: string, cursor?: string): string {
-  const params = new URLSearchParams({ chatbotId, size: '50' });
-  if (cursor) params.set('cursor', cursor);
-  return `${CHATBASE_API_BASE}/conversations?${params.toString()}`;
-}
-
-export function chatbaseMessagesUrl(conversationId: string, cursor?: string): string {
-  const params = new URLSearchParams({ size: '100' });
-  if (cursor) params.set('cursor', cursor);
-  return `${CHATBASE_API_BASE}/conversations/${encodeURIComponent(conversationId)}/messages?${params.toString()}`;
+// API uses page-based pagination (page=1,2,...), not cursor-based.
+// Messages are embedded in each conversation — no separate messages endpoint needed.
+export function chatbaseConversationsUrl(chatbotId: string, page = 1): string {
+  const params = new URLSearchParams({ chatbotId, size: '100', page: String(page) });
+  return `${CHATBASE_API_BASE}/get-conversations?${params.toString()}`;
 }
 
 export function chatbaseFeedbackUrl(conversationId: string, messageId: string): string {

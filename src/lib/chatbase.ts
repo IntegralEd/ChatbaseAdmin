@@ -5,39 +5,45 @@
 
 import {
   chatbaseConversationsUrl,
-  chatbaseMessagesUrl,
   chatbaseFeedbackUrl,
   chatbaseChatbotUrl,
 } from './url';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+// Messages are embedded in each conversation from get-conversations.
+// Only assistant messages consistently lack an id.
+export interface ChatbaseEmbeddedMessage {
+  id?: string;
+  role: 'user' | 'assistant';
+  type?: string;
+  content: string;
+  createdAt?: string;
+  score?: number;
+  source?: string;
+}
+
 export interface ChatbaseConversation {
   id: string;
-  chatbotId: string;
-  createdAt: string;
-  updatedAt: string;
-  customerEmail?: string | null;
-  messageCount?: number;
+  created_at: string;       // snake_case in current API
+  last_message_at: string;  // snake_case in current API
+  source?: string;
+  country?: string;
+  messages: ChatbaseEmbeddedMessage[];
 }
 
 export interface ChatbaseConversationsPage {
   data: ChatbaseConversation[];
-  nextCursor?: string | null;
+  // No pagination key — use page param and stop when data.length < size
 }
 
+// Kept for feedback PATCH — still uses message id
 export interface ChatbaseMessage {
   id: string;
-  conversationId: string;
   role: 'user' | 'assistant';
   content: string;
   feedback?: 'positive' | 'negative' | null;
-  createdAt: string;
-}
-
-export interface ChatbaseMessagesPage {
-  data: ChatbaseMessage[];
-  nextCursor?: string | null;
+  createdAt?: string;
 }
 
 export interface ChatbaseFeedbackPayload {
@@ -98,60 +104,26 @@ async function chatbaseFetch<T>(
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-/**
- * Fetch a single page of conversations for a chatbot.
- */
-export async function fetchConversationsPage(
-  chatbotId: string,
-  cursor?: string,
-): Promise<ChatbaseConversationsPage> {
-  const url = chatbaseConversationsUrl(chatbotId, cursor);
-  return chatbaseFetch<ChatbaseConversationsPage>(url);
-}
+const PAGE_SIZE = 100;
 
 /**
- * Fetch ALL conversations for a chatbot, following cursor pagination.
+ * Fetch ALL conversations for a chatbot using page-based pagination.
+ * Messages are embedded in each conversation object.
+ * Stops when a page returns fewer records than PAGE_SIZE.
  */
 export async function fetchAllConversations(
   chatbotId: string,
 ): Promise<ChatbaseConversation[]> {
   const all: ChatbaseConversation[] = [];
-  let cursor: string | undefined;
+  let page = 1;
 
   do {
-    const page = await fetchConversationsPage(chatbotId, cursor);
-    all.push(...page.data);
-    cursor = page.nextCursor ?? undefined;
-  } while (cursor);
-
-  return all;
-}
-
-/**
- * Fetch a single page of messages for a conversation.
- */
-export async function fetchMessagesPage(
-  conversationId: string,
-  cursor?: string,
-): Promise<ChatbaseMessagesPage> {
-  const url = chatbaseMessagesUrl(conversationId, cursor);
-  return chatbaseFetch<ChatbaseMessagesPage>(url);
-}
-
-/**
- * Fetch ALL messages for a conversation, following cursor pagination.
- */
-export async function fetchAllMessages(
-  conversationId: string,
-): Promise<ChatbaseMessage[]> {
-  const all: ChatbaseMessage[] = [];
-  let cursor: string | undefined;
-
-  do {
-    const page = await fetchMessagesPage(conversationId, cursor);
-    all.push(...page.data);
-    cursor = page.nextCursor ?? undefined;
-  } while (cursor);
+    const url = chatbaseConversationsUrl(chatbotId, page);
+    const result = await chatbaseFetch<ChatbaseConversationsPage>(url);
+    all.push(...result.data);
+    if (result.data.length < PAGE_SIZE) break;
+    page++;
+  } while (true);
 
   return all;
 }
