@@ -1,7 +1,7 @@
 /**
  * Mappers between Chatbase API types and Airtable field shapes.
  *
- * Field names are taken verbatim from schema-registry.csv (2026-03-30).
+ * Field names are taken verbatim from schema-registry.csv (2026-03-31 18:26).
  *
  * NOTE: Chatbase_Chatbot_ID replaced the old Chatbase__Idenitifer field
  * (double underscore, misspelled). Use Chatbase_Chatbot_ID everywhere.
