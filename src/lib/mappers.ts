@@ -167,13 +167,14 @@ export function messageToAirtableFields(
   return fields;
 }
 
-export function syncJobStartFields(chatbotRecordId?: string): Partial<SyncJobFields> {
+export function syncJobStartFields(chatbotRecordId?: string, userRecordId?: string): Partial<SyncJobFields> {
   const fields: Partial<SyncJobFields> = {
     Started_At: new Date().toISOString(),
     Records_Imported: '0',
     Records_Updated: '0',
   };
   if (chatbotRecordId) fields.Chatbot_Link = [chatbotRecordId];
+  if (userRecordId) fields.Triggered_By = [userRecordId];
   return fields;
 }
 

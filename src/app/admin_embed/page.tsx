@@ -74,7 +74,7 @@ function StatusMsg({ msg, isErr }: { msg: string; isErr: boolean }) {
   );
 }
 
-function SyncBtn({ onDone }: { onDone: () => void }) {
+function SyncBtn({ onDone, userEmail }: { onDone: () => void; userEmail?: string }) {
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState('');
   const [isErr, setIsErr] = useState(false);
@@ -82,7 +82,7 @@ function SyncBtn({ onDone }: { onDone: () => void }) {
     <span style={{ display: 'inline-flex', gap: '0.75rem', alignItems: 'center' }}>
       <button className="btn btn-primary btn-sm" disabled={pending}
         onClick={() => { setMsg(''); start(async () => {
-          const r = await syncAll(false);
+          const r = await syncAll(false, userEmail);
           setMsg(r.ok ? `Synced ${r.conversations} convs, ${r.messages} msgs.` : r.error ?? 'Failed');
           setIsErr(!r.ok);
           if (r.ok) onDone();
@@ -161,9 +161,14 @@ export default function AdminEmbedPage() {
   }
 
   useEffect(() => {
-    // Resolve recordId and user email in parallel
-    Promise.all([waitForRecordId(), waitForSoftrEmail()]).then(([rid, email]) => {
-      setUserEmail(email);
+    // userEmail is passed directly in the URL by Softr (?userEmail=...) —
+    // Softr replaces {LOGGED_IN_USER:EMAIL} before the script runs, so it
+    // arrives as a resolved string in the iframe src, no polling needed.
+    const params = new URLSearchParams(window.location.search);
+    const emailParam = params.get('userEmail');
+    if (emailParam) setUserEmail(emailParam);
+
+    waitForRecordId().then((rid) => {
       if (!rid) {
         setErrMsg('No ?recordId= found in URL after 5 s. Check the embed src.');
         setPhase('error');
@@ -214,7 +219,7 @@ export default function AdminEmbedPage() {
             {userEmail && <> &nbsp;·&nbsp; {userEmail}</>}
           </p>
         </div>
-        <SyncBtn onDone={reload} />
+        <SyncBtn onDone={reload} userEmail={userEmail ?? undefined} />
       </div>
 
       {/* ── Feedback Queue ──────────────────────────────────────────────────── */}

@@ -14,6 +14,18 @@ import {
   type MessageFields,
   type SyncJobFields,
 } from '@/lib/mappers';
+interface UserEmailFields { email: string }
+
+/** Look up Airtable Users record ID by email (primary key). */
+async function findUserRecordId(email: string): Promise<string | undefined> {
+  const safe = email.replace(/"/g, '');
+  const users = await listRecords<UserEmailFields>(TABLES.USERS, {
+    filterByFormula: `{email} = "${safe}"`,
+    fields: ['email'],
+    maxRecords: 1,
+  });
+  return users[0]?.id;
+}
 
 export interface SyncResult {
   ok: boolean;
@@ -32,15 +44,22 @@ export interface SyncResult {
  * Force mode: re-syncs every conversation regardless. Use locally for
  * the initial backfill — Vercel Hobby will time out on large datasets.
  */
-export async function syncAll(force = false): Promise<SyncResult> {
+export async function syncAll(force = false, userEmail?: string): Promise<SyncResult> {
   let jobId = '';
 
-  // Fetch chatbots first so we can link the sync job to the chatbot record(s)
+  // Fetch chatbots + resolve user in parallel so we can link both to the sync job
   let chatbots;
   try {
-    chatbots = await listRecords<ChatbotFields>(TABLES.CHATBOTS);
+    const [chatbotRecords, userRecordId] = await Promise.all([
+      listRecords<ChatbotFields>(TABLES.CHATBOTS),
+      userEmail ? findUserRecordId(userEmail) : Promise.resolve(undefined),
+    ]);
+    chatbots = chatbotRecords;
     const firstChatbotId = chatbots[0]?.id;
-    const job = await createRecord<SyncJobFields>(TABLES.SYNC_JOBS, syncJobStartFields(firstChatbotId));
+    const job = await createRecord<SyncJobFields>(
+      TABLES.SYNC_JOBS,
+      syncJobStartFields(firstChatbotId, userRecordId),
+    );
     jobId = job.id;
   } catch (err) {
     return { ok: false, conversations: 0, messages: 0, jobId: '', error: String(err) };
