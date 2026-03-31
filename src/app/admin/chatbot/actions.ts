@@ -97,6 +97,12 @@ export async function pushPendingFeedback(): Promise<FeedbackPushResult> {
     const feedback: 'positive' | 'negative' | null =
       ratingRaw === 'positive' ? 'positive' : ratingRaw === 'negative' ? 'negative' : null;
 
+    if (feedback === null) {
+      details.push(`Review ${review.id}: Internal_Rating "${review.fields.Internal_Rating}" is not "positive" or "negative" — skipped`);
+      errors++;
+      continue;
+    }
+
     try {
       await patchMessageFeedback(conv.fields.Conversation_ID, message.fields.Message_ID, feedback);
       await updateRecord<MessageReviewFields>(TABLES.MESSAGE_REVIEWS, review.id, {

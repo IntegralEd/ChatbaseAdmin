@@ -63,15 +63,20 @@ function PushFeedbackBtn({ onDone }: { onDone: () => void }) {
   const [msg, setMsg] = useState('');
   const [isErr, setIsErr] = useState(false);
   return (
-    <span style={{ display: 'inline-flex', gap: '0.75rem', alignItems: 'center' }}>
+    <span style={{ display: 'inline-flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
       <button className="btn btn-primary btn-sm" disabled={pending}
         onClick={() => { setMsg(''); start(async () => {
           const r = await pushPendingFeedback();
-          setMsg(r.ok
-            ? r.sent === 0 ? 'No pending feedback.' : `Sent ${r.sent} item(s).`
-            : `${r.sent} sent, ${r.errors} error(s)`);
-          setIsErr(!r.ok);
-          if (r.ok) onDone();
+          console.log('[PushFeedback]', r);
+          if (r.ok) {
+            setMsg(r.sent === 0 ? 'No pending feedback.' : `Sent ${r.sent} item(s).`);
+            setIsErr(false);
+            onDone();
+          } else {
+            const detail = r.details.length > 0 ? ` — ${r.details[0]}` : '';
+            setMsg(`${r.sent} sent, ${r.errors} error(s)${detail}`);
+            setIsErr(true);
+          }
         }); }}>
         {pending ? 'Sending…' : 'Push All Feedback'}
       </button>
