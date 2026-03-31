@@ -195,23 +195,25 @@ export async function upsertBatch<T extends object>(
 
 /**
  * Upsert an arbitrary number of records, chunking into batches of 10.
- * Returns aggregated created/updated counts.
+ * Returns aggregated counts and all records (including Airtable record IDs).
  */
 export async function upsertRecords<T extends object>(
   tableId: string,
   records: Array<{ fields: Partial<T> }>,
   fieldsToMergeOn: string[],
-): Promise<{ created: number; updated: number }> {
+): Promise<{ created: number; updated: number; records: AirtableRecord<T>[] }> {
   const BATCH_SIZE = 10;
   let created = 0;
   let updated = 0;
+  const allRecords: AirtableRecord<T>[] = [];
 
   for (let i = 0; i < records.length; i += BATCH_SIZE) {
     const chunk = records.slice(i, i + BATCH_SIZE);
     const result = await upsertBatch<T>(tableId, chunk, fieldsToMergeOn);
     created += result.createdRecords.length;
     updated += result.updatedRecords.length;
+    allRecords.push(...result.records);
   }
 
-  return { created, updated };
+  return { created, updated, records: allRecords };
 }

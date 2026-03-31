@@ -8,11 +8,11 @@ export default function RunSyncButton() {
   const [message, setMessage] = useState('');
   const [isError, setIsError] = useState(false);
 
-  function handleClick() {
+  function run(force: boolean) {
     setMessage('');
     setIsError(false);
     startTransition(async () => {
-      const result = await syncAll();
+      const result = await syncAll(force);
       if (result.ok) {
         setMessage(`Synced ${result.conversations} conversations, ${result.messages} messages.`);
         setIsError(false);
@@ -27,10 +27,20 @@ export default function RunSyncButton() {
     <div className="flex-row">
       <button
         className="btn btn-primary btn-sm"
-        onClick={handleClick}
+        onClick={() => run(false)}
         disabled={isPending}
+        title="Incremental — skips already-synced conversations"
       >
         {isPending ? 'Syncing...' : 'Sync Now'}
+      </button>
+      <button
+        className="btn btn-sm"
+        onClick={() => run(true)}
+        disabled={isPending}
+        title="Re-syncs all conversations and messages — run locally for initial backfill"
+        style={{ marginLeft: '0.5rem' }}
+      >
+        Full Sync
       </button>
       {message && (
         <span style={{ fontSize: '0.8rem', color: isError ? 'var(--color-danger)' : 'var(--color-success)' }}>

@@ -24,10 +24,15 @@ export interface SyncResult {
 }
 
 /**
- * Full sync: conversations + embedded messages for all chatbots in Airtable.
- * Messages come embedded in the get-conversations response — no separate API call needed.
+ * Sync conversations + embedded messages for all chatbots in Airtable.
+ *
+ * Incremental mode (default): skips conversations where last_message_at
+ * hasn't changed AND the stored message count matches Chatbase.
+ *
+ * Force mode: re-syncs every conversation regardless. Use locally for
+ * the initial backfill — Vercel Hobby will time out on large datasets.
  */
-export async function syncAll(): Promise<SyncResult> {
+export async function syncAll(force = false): Promise<SyncResult> {
   let jobId = '';
   try {
     const job = await createRecord<SyncJobFields>(TABLES.SYNC_JOBS, syncJobStartFields());
@@ -38,6 +43,22 @@ export async function syncAll(): Promise<SyncResult> {
 
   try {
     const chatbots = await listRecords<ChatbotFields>(TABLES.CHATBOTS);
+
+    // Load existing conversations for incremental diffing
+    const existingConvRecords = await listRecords<ConversationFields>(TABLES.CONVERSATIONS, {
+      fields: ['Conversation_ID', 'Last_Message_At', 'Message_Count'],
+    });
+    const existingConvMap = new Map(
+      existingConvRecords.map((r) => [
+        r.fields.Conversation_ID,
+        {
+          recordId: r.id,
+          lastMessageAt: r.fields.Last_Message_At ?? '',
+          messageCount: r.fields.Message_Count ?? 0,
+        },
+      ]),
+    );
+
     let totalConversations = 0;
     let totalMessages = 0;
 
@@ -48,34 +69,48 @@ export async function syncAll(): Promise<SyncResult> {
       const conversations = await fetchAllConversations(chatbaseId);
       if (conversations.length === 0) continue;
 
-      // Upsert conversations
-      await upsertRecords<ConversationFields>(
+      // Incremental filter: only process new or changed conversations
+      const toSync = force
+        ? conversations
+        : conversations.filter((c) => {
+            const existing = existingConvMap.get(c.id);
+            if (!existing) return true; // new conversation
+            if (c.last_message_at > existing.lastMessageAt) return true; // new messages arrived
+            // Re-sync if Airtable message count is 0 but Chatbase has messages
+            if (existing.messageCount === 0 && (c.messages?.length ?? 0) > 0) return true;
+            return false;
+          });
+
+      if (toSync.length === 0) continue;
+
+      // Upsert conversations — response includes Airtable record IDs, no extra listRecords needed
+      const convUpsert = await upsertRecords<ConversationFields>(
         TABLES.CONVERSATIONS,
-        conversations.map((c) => ({ fields: conversationToAirtableFields(c, chatbot.id) })),
+        toSync.map((c) => ({ fields: conversationToAirtableFields(c, chatbot.id) })),
         ['Conversation_ID'],
       );
-      totalConversations += conversations.length;
+      totalConversations += toSync.length;
 
-      // Look up Airtable record IDs for linking messages
-      const atConvRecords = await listRecords<ConversationFields>(TABLES.CONVERSATIONS, {
-        filterByFormula: `{Conversation_ID} != ""`,
+      // Build Chatbase ID → Airtable record ID map from upsert response
+      const convIdToRecordId = new Map<string, string>(
+        existingConvRecords.map((r) => [r.fields.Conversation_ID, r.id]),
+      );
+      convUpsert.records.forEach((r) => {
+        if (r.fields.Conversation_ID) convIdToRecordId.set(r.fields.Conversation_ID, r.id);
       });
-      const convIdToRecordId = new Map(atConvRecords.map((r) => [r.fields.Conversation_ID, r.id]));
 
-      // Upsert embedded messages
-      for (const conv of conversations) {
-        if (!conv.messages?.length) continue;
+      // Collect ALL messages from all toSync conversations, then upsert in one pass
+      const allMsgRecords = toSync.flatMap((conv) => {
         const convRecordId = convIdToRecordId.get(conv.id);
-
-        const msgRecords = conv.messages
+        return (conv.messages ?? [])
           .map((m) => embeddedMessageToAirtableFields(m, conv.id, convRecordId))
           .filter((f): f is Partial<MessageFields> => f !== null)
           .map((fields) => ({ fields }));
+      });
 
-        if (msgRecords.length > 0) {
-          await upsertRecords<MessageFields>(TABLES.MESSAGES, msgRecords, ['Message_ID']);
-          totalMessages += msgRecords.length;
-        }
+      if (allMsgRecords.length > 0) {
+        await upsertRecords<MessageFields>(TABLES.MESSAGES, allMsgRecords, ['Message_ID']);
+        totalMessages += allMsgRecords.length;
       }
     }
 
