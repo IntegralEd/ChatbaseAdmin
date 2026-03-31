@@ -40,6 +40,12 @@ export async function pushPendingFeedback(): Promise<FeedbackPushResult> {
   reviews.flatMap((r) => r.fields.Message_Link ?? []).forEach((id) => { msgRecordIdSet[id] = true; });
   const msgRecordIds = Object.keys(msgRecordIdSet);
 
+  console.log(`[pushFeedback] ${reviews.length} reviews, ${msgRecordIds.length} linked message records`);
+
+  if (msgRecordIds.length === 0) {
+    return { ok: false, sent: 0, errors: reviews.length, details: reviews.map((r) => `Review ${r.id}: no Message_Link`) };
+  }
+
   const msgFormula =
     msgRecordIds.length === 1
       ? `RECORD_ID()="${msgRecordIds[0]}"`
@@ -103,8 +109,12 @@ export async function pushPendingFeedback(): Promise<FeedbackPushResult> {
       continue;
     }
 
+    const convId = conv.fields.Conversation_ID;
+    const msgId = message.fields.Message_ID;
+    console.log(`[pushFeedback] review=${review.id} convId=${convId} msgId=${msgId} feedback=${feedback}`);
+
     try {
-      await patchMessageFeedback(conv.fields.Conversation_ID, message.fields.Message_ID, feedback);
+      await patchMessageFeedback(convId, msgId, feedback);
       await updateRecord<MessageReviewFields>(TABLES.MESSAGE_REVIEWS, review.id, {
         Feedback_Sync_Status: 'sent',
         Feedback_Sync_At: new Date().toISOString(),
@@ -112,7 +122,7 @@ export async function pushPendingFeedback(): Promise<FeedbackPushResult> {
       sent++;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      details.push(`Review ${review.id}: ${msg}`);
+      details.push(`Review ${review.id} (conv=${convId} msg=${msgId}): ${msg}`);
       await updateRecord<MessageReviewFields>(TABLES.MESSAGE_REVIEWS, review.id, {
         Feedback_Sync_Status: 'error',
       }).catch(() => null);

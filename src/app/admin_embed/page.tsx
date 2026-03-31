@@ -67,14 +67,15 @@ function PushFeedbackBtn({ onDone }: { onDone: () => void }) {
       <button className="btn btn-primary btn-sm" disabled={pending}
         onClick={() => { setMsg(''); start(async () => {
           const r = await pushPendingFeedback();
-          console.log('[PushFeedback]', r);
+          console.log('[PushFeedback] result:', r);
+          if (r.details.length) console.log('[PushFeedback] details:', r.details);
           if (r.ok) {
             setMsg(r.sent === 0 ? 'No pending feedback.' : `Sent ${r.sent} item(s).`);
             setIsErr(false);
             onDone();
           } else {
-            const detail = r.details.length > 0 ? ` — ${r.details[0]}` : '';
-            setMsg(`${r.sent} sent, ${r.errors} error(s)${detail}`);
+            const allDetails = r.details.join(' | ');
+            setMsg(`${r.sent} sent, ${r.errors} error(s) — ${allDetails}`);
             setIsErr(true);
           }
         }); }}>
