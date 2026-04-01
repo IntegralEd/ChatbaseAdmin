@@ -29,7 +29,7 @@ export async function loadChatbotPanel(recordId: string): Promise<ChatbotPanelDa
         sort: [{ field: 'Feedback_Sync_Status', direction: 'asc' }],
       }),
       listRecords<PromptChangeRequestFields>(TABLES.PROMPT_CHANGE_REQUESTS, {
-        filterByFormula: `OR({Change_Status}="open",{Change_Status}="pending",{Change_Status}="approved")`,
+        filterByFormula: `OR({Change_Status}="Requested",{Change_Status}="Approved")`,
         sort: [{ field: 'Change_Title', direction: 'asc' }],
       }),
     ]);

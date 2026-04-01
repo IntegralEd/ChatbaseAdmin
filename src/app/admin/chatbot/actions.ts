@@ -184,7 +184,7 @@ export async function pushPromptChange(
         Records_Imported: '1',
       }),
       updateRecord<PromptChangeRequestFields>(TABLES.PROMPT_CHANGE_REQUESTS, changeId, {
-        Change_Status: 'pushed',
+        Change_Status: 'Pushed',
         Pushed_Datetime: now,
         Chatbase_Update_Result: 'success',
         Sync_Jobs: [job.id],
