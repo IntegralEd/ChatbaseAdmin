@@ -1,12 +1,13 @@
 'use server';
 
 import { TABLES } from '@/lib/constants';
-import { listRecords, getRecord, updateRecord } from '@/lib/airtable';
+import { listRecords, getRecord, createRecord, updateRecord } from '@/lib/airtable';
 import { updateChatbotData, updateChatbotSettings } from '@/lib/chatbase';
 import {
   type MessageReviewFields,
   type PromptChangeRequestFields,
   type ChatbotFields,
+  type SyncJobFields,
 } from '@/lib/mappers';
 import { syncAll } from '@/app/admin/actions';
 
@@ -61,21 +62,41 @@ export async function pushFeedbackAsSource(
 
   console.log(`[pushFeedbackAsSource] sourceText length=${sourceText.length}`);
 
+  // Create Sync_Job to record this push
+  const job = await createRecord<SyncJobFields>(TABLES.SYNC_JOBS, {
+    Job_Type: 'feedback_push',
+    Started_At: new Date().toISOString(),
+    Chatbot_Link: [chatbotRecordId],
+    Feedback_Reviews_Link: reviews.map((r) => r.id),
+    Feedback_Reviews_Count: String(reviews.length),
+    Feedback_Text_Transmitted: sourceText,
+    ...(userEmail ? { Triggered_By_Email: userEmail } : {}),
+  });
+
   try {
     await updateChatbotData(chatbaseId, chatbot.fields.Chatbot_Name ?? chatbaseId, sourceText);
     const now = new Date().toISOString();
-    await Promise.all(
-      reviews.map((r) =>
+    await Promise.all([
+      updateRecord<SyncJobFields>(TABLES.SYNC_JOBS, job.id, {
+        Completed_At: now,
+        Records_Imported: String(reviews.length),
+      }),
+      ...reviews.map((r) =>
         updateRecord<MessageReviewFields>(TABLES.MESSAGE_REVIEWS, r.id, {
           Feedback_Sync_Status: 'sent',
           Feedback_Sync_At: now,
+          Sync_Jobs: [job.id],
         }),
       ),
-    );
+    ]);
     return { ok: true, sent: reviews.length, errors: 0, details: [] };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.log(`[pushFeedbackAsSource] error: ${msg}`);
+    await updateRecord<SyncJobFields>(TABLES.SYNC_JOBS, job.id, {
+      Completed_At: new Date().toISOString(),
+      Error_Log: msg,
+    }).catch(() => null);
     return { ok: false, sent: 0, errors: reviews.length, details: [msg] };
   }
 }
@@ -122,6 +143,21 @@ export async function pushPromptChange(
     return { ok: false, error: 'No Proposed_Prompt_Text or Proposed_Source_Change to push' };
   }
 
+  const transmittedText = [
+    hasInstructions ? `[Instructions]\n${change.fields.Proposed_Prompt_Text}` : '',
+    hasSource ? `[Source Change]\n${change.fields.Proposed_Source_Change}` : '',
+  ].filter(Boolean).join('\n\n');
+
+  // Create Sync_Job to record this push
+  const job = await createRecord<SyncJobFields>(TABLES.SYNC_JOBS, {
+    Job_Type: 'prompt_push',
+    Started_At: new Date().toISOString(),
+    Chatbot_Link: [chatbotRecordId],
+    Prompt_Changes_Link: [changeId],
+    Prompt_Changes_Count: '1',
+    Prompt_Text_Transmitted: transmittedText,
+  });
+
   try {
     if (hasInstructions) {
       await updateChatbotSettings(chatbaseId, { instructions: change.fields.Proposed_Prompt_Text });
@@ -129,17 +165,31 @@ export async function pushPromptChange(
     if (hasSource) {
       await updateChatbotData(chatbaseId, chatbot.fields.Chatbot_Name ?? chatbaseId, change.fields.Proposed_Source_Change!);
     }
-    await updateRecord<PromptChangeRequestFields>(TABLES.PROMPT_CHANGE_REQUESTS, changeId, {
-      Change_Status: 'pushed',
-      Pushed_Datetime: new Date().toISOString(),
-      Chatbase_Update_Result: 'success',
-    });
+    const now = new Date().toISOString();
+    await Promise.all([
+      updateRecord<SyncJobFields>(TABLES.SYNC_JOBS, job.id, {
+        Completed_At: now,
+        Records_Imported: '1',
+      }),
+      updateRecord<PromptChangeRequestFields>(TABLES.PROMPT_CHANGE_REQUESTS, changeId, {
+        Change_Status: 'pushed',
+        Pushed_Datetime: now,
+        Chatbase_Update_Result: 'success',
+        Sync_Jobs: [job.id],
+      }),
+    ]);
     return { ok: true };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    await updateRecord<PromptChangeRequestFields>(TABLES.PROMPT_CHANGE_REQUESTS, changeId, {
-      Chatbase_Update_Result: `error: ${msg}`,
-    }).catch(() => null);
+    await Promise.all([
+      updateRecord<SyncJobFields>(TABLES.SYNC_JOBS, job.id, {
+        Completed_At: new Date().toISOString(),
+        Error_Log: msg,
+      }),
+      updateRecord<PromptChangeRequestFields>(TABLES.PROMPT_CHANGE_REQUESTS, changeId, {
+        Chatbase_Update_Result: `error: ${msg}`,
+      }),
+    ]).catch(() => null);
     return { ok: false, error: msg };
   }
 }

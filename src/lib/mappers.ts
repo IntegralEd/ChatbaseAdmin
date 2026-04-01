@@ -1,7 +1,7 @@
 /**
  * Mappers between Chatbase API types and Airtable field shapes.
  *
- * Field names are taken verbatim from schema-registry.csv (2026-03-31 18:26).
+ * Field names are taken verbatim from schema-registry.csv (2026-03-31 19:13).
  *
  * NOTE: Chatbase_Chatbot_ID replaced the old Chatbase__Idenitifer field
  * (double underscore, misspelled). Use Chatbase_Chatbot_ID everywhere.
@@ -82,6 +82,7 @@ export interface MessageReviewFields {
   Suggested_URL: string;
   Needs_Prompt_Fix: boolean;
   Needs_Content_Fix: boolean;
+  Sync_Jobs: string[];          // multipleRecordLinks → Sync_Jobs
 }
 
 // ── Prompt_Change_Requests ────────────────────────────────────────────────────
@@ -98,6 +99,7 @@ export interface PromptChangeRequestFields {
   Requested_By: string[];
   Pushed_Datetime: string;
   Chatbase_Update_Result: string;
+  Sync_Jobs: string[];          // multipleRecordLinks → Sync_Jobs
 }
 
 // ── Sync_Jobs ─────────────────────────────────────────────────────────────────
@@ -106,12 +108,21 @@ export interface SyncJobFields {
   Started_At: string;
   Completed_At: string;
   Cursor_Used: string;
-  Records_Imported: string;    // singleLineText
-  Records_Updated: string;     // singleLineText
+  Records_Imported: string;           // singleLineText
+  Records_Updated: string;            // singleLineText
   Error_Log: string;
-  Chatbot_Link: string[];      // multipleRecordLinks → Chatbase_Chatbots
-  Triggered_By: string[];      // multipleRecordLinks → Users
-  Triggered_By_Email: string;  // singleLineText fallback — add this field in Airtable Sync_Jobs
+  Job_Type: string;                   // singleSelect: conversation_sync | feedback_push | prompt_push
+  Chatbot_Link: string[];             // multipleRecordLinks → Chatbase_Chatbots
+  Triggered_By: string[];             // multipleRecordLinks → Users
+  Triggered_By_Email: string;         // singleLineText fallback
+  // Feedback push fields
+  Feedback_Reviews_Link: string[];    // multipleRecordLinks → Message_Reviews
+  Feedback_Text_Transmitted: string;  // multilineText — full source text sent to Chatbase
+  Feedback_Reviews_Count: string;     // singleLineText
+  // Prompt push fields
+  Prompt_Changes_Link: string[];      // multipleRecordLinks → Prompt_Change_Requests
+  Prompt_Text_Transmitted: string;    // multilineText — full text sent to Chatbase
+  Prompt_Changes_Count: string;       // singleLineText
 }
 
 // ── Mappers ───────────────────────────────────────────────────────────────────

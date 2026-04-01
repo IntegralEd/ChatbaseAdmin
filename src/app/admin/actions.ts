@@ -58,7 +58,7 @@ export async function syncAll(force = false, userEmail?: string): Promise<SyncRe
     const firstChatbotId = chatbots[0]?.id;
     const job = await createRecord<SyncJobFields>(
       TABLES.SYNC_JOBS,
-      syncJobStartFields(firstChatbotId, userRecordId, userEmail),
+      { ...syncJobStartFields(firstChatbotId, userRecordId, userEmail), Job_Type: 'conversation_sync' },
     );
     jobId = job.id;
   } catch (err) {
