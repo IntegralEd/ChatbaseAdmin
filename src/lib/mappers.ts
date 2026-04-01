@@ -138,7 +138,6 @@ export function chatbotProfileToAirtableFields(
     'Chatbots status': profile.status,
     'Chatbots visibility': profile.visibility,
     'Chatbots last message at': profile.last_message_at,
-    'Chatbots last trained at': profile.last_trained_at,
     'Chatbots num of characters': profile.num_of_characters,
     'Chatbots temp': profile.temp,
     'Chatbots only allow on added domains': profile.only_allow_on_added_domains,
