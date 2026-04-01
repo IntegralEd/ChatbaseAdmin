@@ -130,10 +130,8 @@ export default async function ChatbotPage({
                     </td>
                     <td>{r.fields.Issue_Type ?? '—'}</td>
                     <td>
-                      <span style={{
-                        color: r.fields.Feedback_Sync_Status === 'error' ? 'var(--color-danger)' : undefined,
-                      }}>
-                        {r.fields.Feedback_Sync_Status || 'pending'}
+                      <span>
+                        {r.fields.Change_Status || 'Requested'}
                       </span>
                     </td>
                     <td className="truncate" title={r.fields.Internal_Notes ?? ''}>
