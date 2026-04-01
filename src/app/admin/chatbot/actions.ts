@@ -54,13 +54,14 @@ export async function pushFeedbackAsSource(
 
   const date = new Date().toISOString().slice(0, 10);
   const stamp = userEmail ? `${date} — ${userEmail}` : date;
-  const header = `=== Corrective Feedback — ${stamp} ===\n`;
+  const sourceName = `Corrective Feedback — ${stamp}`;
+  const header = `=== ${sourceName} ===\n`;
   const blocks = reviews
     .map((r) => `---\n${r.fields.Message_Feedback_Concat}`)
     .join('\n\n');
   const sourceText = `${header}\n${blocks}`;
 
-  console.log(`[pushFeedbackAsSource] sourceText length=${sourceText.length}`);
+  console.log(`[pushFeedbackAsSource] chatbot=${chatbaseId} sourceName="${sourceName}" length=${sourceText.length}`);
 
   // Create Sync_Job to record this push
   const job = await createRecord<SyncJobFields>(TABLES.SYNC_JOBS, {
@@ -73,7 +74,7 @@ export async function pushFeedbackAsSource(
   });
 
   try {
-    await updateChatbotData(chatbaseId, chatbot.fields.Chatbot_Name ?? chatbaseId, sourceText);
+    await updateChatbotData(chatbaseId, sourceName, sourceText);
     const now = new Date().toISOString();
     await Promise.all([
       updateRecord<SyncJobFields>(TABLES.SYNC_JOBS, job.id, {
