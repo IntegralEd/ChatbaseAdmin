@@ -1,219 +1,183 @@
 # ChatbaseAdmin
 
-Internal ops application for reviewing Chatbase conversations and managing training changes.
+Internal ops application for managing Chatbase chatbot training, reviewing conversations, and pushing corrective feedback and prompt changes.
 
-**This is NOT a public-facing chatbot.** It is an internal tool for authorised team members to:
-- Review conversation history synced from Chatbase
-- Mark message feedback (positive/negative)
-- Manage prompt and content change requests
-- Trigger and monitor sync jobs
+**This is NOT a public-facing chatbot.** Authorised team members only.
+
+Deployed at: `https://chatbase-admin.vercel.app`
+
+---
+
+## What it does
+
+| Capability | How |
+|---|---|
+| Sync conversations + messages from Chatbase | `syncAll` server action — incremental by default |
+| Sync chatbot profile (instructions, model, status, last trained) | Runs automatically on every sync |
+| Review message quality and flag corrections | Message_Reviews table + embed panel |
+| Push corrective feedback as Chatbase training source | Batched source text, one document per push |
+| Manage and push prompt changes | Prompt_Change_Requests table + embed panel |
+| Softr embed panel for non-technical admins | `/admin_embed` iframe embedded in Softr |
+
+---
+
+## Workflow
+
+### Message Feedback
+1. A conversation message is flagged (`Needs_Review=true`) or a reviewer creates a `Message_Review` record in Airtable
+2. In the embed panel, reviewer fills in `Response_Snippet_to_Improve`, `Suggested_Response`, and `Internal_Notes`
+3. Airtable formula field `Message_Feedback_Concat` auto-concatenates into training text:
+   ```
+   {Internal_Notes}
+
+   When Agent said: {Response_Snippet_to_Improve}
+   Instead it should have said the following: {Suggested_Response}
+   ```
+4. Reviewer clicks **Approve** in the embed panel → `Change_Status = Approved`
+5. Reviewer checks the **Send** checkbox on the row
+6. Reviewer clicks **Send Approved Items to Retrain** → batches all checked+approved reviews into a single dated source document pushed to Chatbase via `POST /update-chatbot-data`
+7. Each push creates a uniquely named source document: `Corrective Feedback — YYYY-MM-DD — user@email.com` — batches accumulate, nothing is overwritten
+8. On success: `Change_Status = Sync Complete`, record drops off the queue
+
+### Prompt Changes
+1. A `Prompt_Change_Request` record is created in Airtable with `Change_Status = Requested`
+2. In the embed panel, reviewer clicks **Approve** → `Change_Status = Approved`
+3. Reviewer checks the **Queue** checkbox on the row (only one may be queued at a time)
+4. Reviewer clicks **Push** → pushes `Proposed_Prompt_Text` via `POST /update-chatbot-settings` and/or `Proposed_Source_Change` via `POST /update-chatbot-data`
+5. On success: `Change_Status = Sync Complete`, `Pushed_Datetime` set, record drops off the queue
+
+### Change_Status lifecycle (both tables)
+```
+Requested → Approved → Sync Complete
+         ↘           ↘
+          Rejected    Rejected
+```
+`Pushed` is deprecated — `Sync Complete` is now the terminal success state.
+
+---
+
+## Softr Embed Panel (`/admin_embed`)
+
+A lightweight iframe panel embedded in Softr pages. The Softr custom code block in `reference/softr-embed-code.txt` handles:
+- Reading `?recordId=` from the page URL (the Airtable chatbot record ID)
+- Polling a hidden `{LOGGED_IN_USER:EMAIL}` span until Softr resolves it
+- Injecting the iframe once both values are confirmed
+
+**Softr page URL pattern:**
+```
+https://yourapp.softr.app/chatbot-admin?recordId=recXXXXXXXXXXXXXX
+```
+
+The embed panel shows:
+- Chatbot name, Chatbase ID, logged-in user, last trained timestamp
+- **Message Feedback Queue** — Approve / Reject / Send checkbox per row
+- **Prompt Change Queue** — Approve / Reject / Queue checkbox / Push per row
+- **Sync Now** button — syncs conversations, messages, and chatbot profile
 
 ---
 
 ## Architecture
 
 ```
-Browser (internal user)
-        |
-        | HTTPS
-        v
- Next.js 14 App Router (Vercel)
- ┌────────────────────────────────────────────────────────┐
- │  /admin/*           Server components (read from AT)   │
- │  /admin/layout.tsx  Sidebar nav                        │
- │                                                        │
- │  /api/sync/*        POST routes (write to AT + CB)     │
- │  /api/webhooks/*    POST routes (Airtable automation)  │
- │  /api/health        GET (no auth)                      │
- └───────────┬─────────────────────────┬──────────────────┘
+Softr page (iframe)             Internal browser (/admin/*)
+        |                               |
+        | HTTPS                         | HTTPS
+        v                               v
+  Next.js 14 App Router — Vercel (chatbase-admin.vercel.app)
+  ┌────────────────────────────────────────────────────────┐
+  │  /admin_embed        Client page — Softr iframe target  │
+  │  /admin/*            Server components (read from AT)   │
+  │  /api/sync/*         POST routes (legacy, keep for now) │
+  │  /api/health         GET (no auth)                      │
+  │                                                         │
+  │  Server Actions (app/admin/actions.ts)                  │
+  │    syncAll()         Conversations + profile sync       │
+  │  Server Actions (app/admin/chatbot/actions.ts)          │
+  │    pushFeedbackAsSource()   Batch feedback → Chatbase   │
+  │    pushPromptChange()       Push instructions/source    │
+  │    approveMessageReview()   Set Change_Status=Approved  │
+  │    approvePromptChange()    Set Change_Status=Approved  │
+  │    rejectMessageReview()    Set Change_Status=Rejected  │
+  │    rejectPromptChange()     Set Change_Status=Rejected  │
+  │    toggleSendToChatbase()   Toggle send checkbox        │
+  │    toggleQueueForPush()     Toggle queue checkbox       │
+  └──────────┬─────────────────────────┬───────────────────┘
              │                         │
       Bearer token               Bearer token
              │                         │
              v                         v
      ┌───────────────┐       ┌──────────────────┐
-     │  Airtable API │       │  Chatbase API    │
-     │  (base: appy…)│       │  (chatbase.co)   │
+     │  Airtable API │       │  Chatbase API v1  │
+     │  base: appy…  │       │  chatbase.co      │
      └───────────────┘       └──────────────────┘
-
-Airtable automation → POST /api/webhooks/airtable/review-created
 ```
+
+---
+
+## Chatbase API endpoints in use
+
+| Method | Endpoint | Used for |
+|---|---|---|
+| GET | `/api/v1/get-chatbots` | Fetch all chatbot profiles (sync) |
+| GET | `/api/v1/get-conversations` | Fetch paginated conversations |
+| POST | `/api/v1/update-chatbot-data` | Push source text (feedback batches, source changes) |
+| POST | `/api/v1/update-chatbot-settings` | Push instructions update |
+
+> **Note:** These are v1 endpoints. The v2 `/agents/` endpoints do not work for v1 chatbots.
+> There is no GET `/get-chatbot` (singular) — use `/get-chatbots` and filter by ID.
+
+---
+
+## Sync_Jobs audit trail
+
+Every push operation creates a `Sync_Jobs` record:
+
+| `Job_Type` | Trigger | Linked records |
+|---|---|---|
+| `conversation_sync` | Sync Now button | `Chatbot_Link`, `Triggered_By` |
+| `feedback_push` | Send Approved Items to Retrain | `Feedback_Reviews_Link`, `Feedback_Text_Transmitted` |
+| `prompt_push` | Push prompt change | `Prompt_Changes_Link`, `Prompt_Text_Transmitted` |
+
+---
+
+## Airtable Schema
+
+### Key field notes
+
+- `Chatbase_Chatbot_ID` — primary chatbot identifier. Previously `Chatbase__Idenitifer` (misspelled, double underscore) — use the new name everywhere.
+- `Change_Status` — singleSelect on both `Message_Reviews` and `Prompt_Change_Requests`. Options: `Requested`, `Approved`, `Sync Complete`, `Rejected`. (`Pushed` is deprecated.)
+- `Message_Feedback_Concat` — formula field on `Message_Reviews`. Must include `Internal_Notes`, `Response_Snippet_to_Improve`, and `Suggested_Response`.
+- `Queue_For_Push` — checkbox on `Prompt_Change_Requests`. Exactly one must be checked to enable Push.
+- `Send_To_Chatbase` — checkbox on `Message_Reviews`. Only enabled in the UI once `Change_Status=Approved`.
+- `Last_Trained` — dateTime on `Chatbase_Chatbots`. Populated from `last_trained_at` on every profile sync.
+- `Prompted_Change_Requests.Source_Message_Links` — links to `Chatbase_Messages` (fixed 2026-03-30; previously linked to Conversations by mistake).
+
+### Table IDs
+
+| Constant | Table ID | Table Name |
+|---|---|---|
+| `TABLES.USERS` | tbl7Z5w12sAh3lx2A | Users |
+| `TABLES.CHATBOTS` | tblALOX2TYrzWPVKe | Chatbase_Chatbots |
+| `TABLES.CONVERSATIONS` | tblV1K2KQUrI8PAmt | Chatbase_Conversations |
+| `TABLES.MESSAGES` | tblAMrcshFzNUYx5g | Chatbase_Messages |
+| `TABLES.MESSAGE_REVIEWS` | tblVYqPsI2vLZqwez | Message_Reviews |
+| `TABLES.PROMPT_CHANGE_REQUESTS` | tblalr4AqofO1cpZQ | Prompt_Change_Requests |
+| `TABLES.CONTENT_CHANGE_REQUESTS` | tblBLkBmSaAib0WLr | Content_Change_Requests |
+| `TABLES.SYNC_JOBS` | tbllNdfrQq45ZcHSF | Sync_Jobs |
+| `TABLES.CHATBASE_USERS` | tblL7n2Kh6tK4mq6l | Chatbase_Users_Table |
+
+Schema registry: `reference/schema-registry.csv` — export from Airtable and replace when fields change.
 
 ---
 
 ## Environment Variables
 
-| Variable               | Required | Description                                                                 |
-|------------------------|----------|-----------------------------------------------------------------------------|
-| `CHATBASE_API_KEY`     | Yes      | Chatbase API key from chatbase.co dashboard                                |
-| `AIRTABLE_API_KEY`     | Yes      | Airtable personal access token (not legacy API key)                        |
-| `AIRTABLE_BASE_ID`     | Yes      | Airtable base ID — default `appy5x5vC5HjN3Ukq`                            |
-| `INTERNAL_ADMIN_TOKEN` | Yes      | Shared secret for all protected API routes. Generate: `openssl rand -hex 32` |
-| `VERCEL_URL`           | Auto     | Set automatically by Vercel; used by webhook route for internal fetch base URL |
-
----
-
-## API Routes
-
-| Method | Path                                        | Auth    | Description                                          |
-|--------|---------------------------------------------|---------|------------------------------------------------------|
-| GET    | `/api/health`                               | None    | Health check — returns status, timestamp, version    |
-| POST   | `/api/sync/conversations`                   | Bearer  | Sync conversations from Chatbase → Airtable          |
-| POST   | `/api/sync/messages`                        | Bearer  | Sync messages for one conversation → Airtable        |
-| POST   | `/api/sync/message-feedback`                | Bearer  | Patch feedback on Chatbase + update Airtable         |
-| POST   | `/api/sync/update-chatbot`                  | Bearer  | Update chatbot instructions/source in Chatbase + AT  |
-| POST   | `/api/webhooks/airtable/review-created`     | Bearer  | Airtable automation hook: positive review → Chatbase |
-
-All protected routes require: `Authorization: Bearer <INTERNAL_ADMIN_TOKEN>`
-
-### Request bodies
-
-**POST /api/sync/conversations**
-```json
-{ "chatbotId": "optional-chatbase-id" }
-```
-
-**POST /api/sync/messages**
-```json
-{ "conversationId": "chatbase-conversation-id" }
-```
-
-**POST /api/sync/message-feedback**
-```json
-{ "messageId": "...", "conversationId": "...", "feedback": "positive" | "negative" | null }
-```
-
-**POST /api/sync/update-chatbot**
-```json
-{
-  "chatbotId": "...",
-  "sourceText": "optional new source",
-  "instructions": "optional new instructions",
-  "dryRun": false
-}
-```
-
-**POST /api/webhooks/airtable/review-created**
-```json
-{ "recordId": "airtable-message-review-record-id" }
-```
-
----
-
-## Known Schema Mismatches
-
-These are intentional discrepancies in the Airtable schema that all developers must be aware of:
-
-### 1. `Chatbase__Idenitifer` — double underscore, misspelled "Identifier"
-
-The primary external ID field on the `Chatbase_Chatbots` table is named:
-```
-Chatbase__Idenitifer
-```
-(two underscores, "Idenitifer" not "Identifier"). Use this exact string in all Airtable reads/writes.
-
-### 2. `Prompt_Change_Requests.Source_Message_Links` links to Conversations, not Messages
-
-Despite the name "Message_Links", this field on `Prompt_Change_Requests` (tblalr4AqofO1cpZQ) links to `Chatbase_Conversations` (tblV1K2KQUrI8PAmt).
-
-Compare: `Content_Change_Requests.Source_Message_Links` (tblBLkBmSaAib0WLr) correctly links to `Chatbase_Messages` (tblAMrcshFzNUYx5g).
-
-Both fields are named identically — the target table differs.
-
----
-
-## Airtable Table IDs
-
-Defined as constants in `src/lib/constants.ts`:
-
-| Constant                | Table ID             | Table Name                |
-|-------------------------|----------------------|---------------------------|
-| `TABLES.USERS`          | tbl7Z5w12sAh3lx2A   | Users                     |
-| `TABLES.CHATBOTS`       | tblALOX2TYrzWPVKe   | Chatbase_Chatbots         |
-| `TABLES.CONVERSATIONS`  | tblV1K2KQUrI8PAmt   | Chatbase_Conversations    |
-| `TABLES.MESSAGES`       | tblAMrcshFzNUYx5g   | Chatbase_Messages         |
-| `TABLES.MESSAGE_REVIEWS`| tblVYqPsI2vLZqwez   | Message_Reviews           |
-| `TABLES.PROMPT_CHANGE_REQUESTS` | tblalr4AqofO1cpZQ | Prompt_Change_Requests |
-| `TABLES.CONTENT_CHANGE_REQUESTS` | tblBLkBmSaAib0WLr | Content_Change_Requests |
-| `TABLES.SYNC_JOBS`      | tbllNdfrQq45ZcHSF   | Sync_Jobs                 |
-| `TABLES.CHATBASE_USERS` | tblL7n2Kh6tK4mq6l   | Chatbase_Users_Table      |
-
----
-
-## Local Development
-
-### Prerequisites
-- Node.js 18+
-- Airtable base configured (see schema above)
-- Chatbase account with API key
-
-### Setup
-
-```bash
-# Clone / navigate to repo
-cd /path/to/ChatbaseAdmin
-
-# Install dependencies
-npm install
-
-# Copy env template and fill in values
-cp .env.example .env.local
-# Edit .env.local with your keys
-
-# Start dev server
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) — redirects to `/admin`.
-
-### Testing API routes locally
-
-```bash
-# Health (no auth)
-curl http://localhost:3000/api/health
-
-# Sync conversations (requires token)
-curl -X POST http://localhost:3000/api/sync/conversations \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{}'
-
-# Sync messages for a specific conversation
-curl -X POST http://localhost:3000/api/sync/messages \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"conversationId":"abc123"}'
-
-# Dry-run chatbot update
-curl -X POST http://localhost:3000/api/sync/update-chatbot \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"chatbotId":"bot123","instructions":"You are...","dryRun":true}'
-```
-
----
-
-## Deployment to Vercel
-
-1. Push to a GitHub repository (private).
-
-2. Import into Vercel:
-   - Go to vercel.com → New Project → Import repo
-   - Framework preset: **Next.js** (auto-detected)
-   - Root directory: leave empty (project root)
-
-3. Set environment variables in Vercel dashboard:
-   - `CHATBASE_API_KEY`
-   - `AIRTABLE_API_KEY`
-   - `AIRTABLE_BASE_ID` → `appy5x5vC5HjN3Ukq`
-   - `INTERNAL_ADMIN_TOKEN` → generate with `openssl rand -hex 32`
-
-4. Recommended: enable **Vercel Password Protection** (Pro) or restrict access via Vercel's trusted IPs to prevent public access to `/admin/*`.
-
-5. Configure Airtable automations to POST to:
-   ```
-   https://your-deployment.vercel.app/api/webhooks/airtable/review-created
-   ```
-   with header `Authorization: Bearer <INTERNAL_ADMIN_TOKEN>`.
+| Variable | Required | Description |
+|---|---|---|
+| `CHATBASE_API_KEY` | Yes | Chatbase API key from chatbase.co dashboard |
+| `AIRTABLE_API_KEY` | Yes | Airtable personal access token |
+| `AIRTABLE_BASE_ID` | Yes | Airtable base ID — `appy5x5vC5HjN3Ukq` |
+| `INTERNAL_ADMIN_TOKEN` | Yes | Shared secret for legacy API routes. Generate: `openssl rand -hex 32` |
 
 ---
 
@@ -222,40 +186,83 @@ curl -X POST http://localhost:3000/api/sync/update-chatbot \
 ```
 src/
   app/
-    layout.tsx                     Root HTML shell
-    page.tsx                       Redirect → /admin
-    globals.css                    All styles (no UI library)
+    layout.tsx
+    page.tsx                          Redirect → /admin
+    globals.css
     admin/
-      layout.tsx                   Sidebar nav wrapper
-      page.tsx                     Dashboard (stats + recent jobs)
-      RunSyncButton.tsx            Client component for sync trigger
+      layout.tsx                      Sidebar nav
+      page.tsx                        Dashboard
+      actions.ts                      syncAll() server action
+      chatbot/
+        page.tsx                      Per-chatbot admin page
+        actions.ts                    All push/approve/reject server actions
+        ChatbotActions.tsx
       conversations/
-        page.tsx                   Conversation list table
-        [conversationId]/
-          page.tsx                 Message thread view
-          FeedbackButtons.tsx      Client component for feedback
-      prompt-changes/
-        page.tsx                   Prompt change request table
-      sync-jobs/
-        page.tsx                   Sync job log
+        page.tsx
+        [conversationId]/page.tsx
+      sync-jobs/page.tsx
+    admin_embed/
+      page.tsx                        Softr iframe panel (client component)
+      data-actions.ts                 loadChatbotPanel() server action
     api/
       health/route.ts
       sync/
         conversations/route.ts
-        messages/route.ts
-        message-feedback/route.ts
+        message-feedback/route.ts     Updates Airtable only (no Chatbase feedback API on v1)
         update-chatbot/route.ts
-      webhooks/
-        airtable/review-created/route.ts
   lib/
-    auth.ts          requireAdminToken() helper
-    chatbase.ts      Chatbase API client (typed)
-    airtable.ts      Airtable API client (typed, upsert support)
-    mappers.ts       Chatbase → Airtable field mappers + field interfaces
-    constants.ts     TABLES map + other constants
-    url.ts           URL builder helpers
+    airtable.ts                       Typed Airtable client (listRecords, upsertRecords, etc.)
+    chatbase.ts                       Typed Chatbase API client
+    mappers.ts                        Field interfaces + Chatbase→Airtable mappers
+    constants.ts                      TABLES map
+    url.ts                            URL builder helpers
+reference/
+  schema-registry.csv                 Latest Airtable schema export
+  softr-embed-code.txt                Softr custom code block for iframe embed
 ```
 
 ---
 
-*Internal use only. Do not expose this application on a public URL without authentication.*
+## Local Development
+
+```bash
+npm install
+cp .env.example .env.local   # fill in keys
+npm run dev                  # http://localhost:3000 → /admin
+```
+
+### Useful curl tests
+
+```bash
+# Verify Chatbase API key + list chatbots
+curl "https://www.chatbase.co/api/v1/get-chatbots" \
+  -H "Authorization: Bearer $CHATBASE_API_KEY"
+
+# Test feedback push (requires real chatbotId and meaningful sourceText)
+curl -X POST "https://www.chatbase.co/api/v1/update-chatbot-data" \
+  -H "Authorization: Bearer $CHATBASE_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"chatbotId":"...","chatbotName":"Test Batch","sourceText":"...at least 100 chars of content..."}'
+
+# Test settings push
+curl -X POST "https://www.chatbase.co/api/v1/update-chatbot-settings" \
+  -H "Authorization: Bearer $CHATBASE_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"chatbotId":"...","instructions":"You are..."}'
+```
+
+---
+
+## Deployment
+
+Push to `main` → Vercel auto-deploys. Project linked via `.vercel/project.json` to `chatbase-admin` on the IntegralEd team.
+
+Set these in the Vercel dashboard:
+- `CHATBASE_API_KEY`
+- `AIRTABLE_API_KEY`
+- `AIRTABLE_BASE_ID`
+- `INTERNAL_ADMIN_TOKEN`
+
+---
+
+*Internal use only. Do not expose without authentication.*
