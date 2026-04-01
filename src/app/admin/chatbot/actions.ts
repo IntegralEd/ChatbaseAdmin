@@ -70,7 +70,7 @@ export async function pushFeedbackAsSource(
     Feedback_Reviews_Link: reviews.map((r) => r.id),
     Feedback_Reviews_Count: String(reviews.length),
     Feedback_Text_Transmitted: sourceText,
-    ...(userEmail ? { Triggered_By_Email: userEmail } : {}),
+    ...(userEmail ? { Triggered_By_Txt: userEmail } : {}),
   });
 
   try {

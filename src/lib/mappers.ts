@@ -115,7 +115,7 @@ export interface SyncJobFields {
   Job_Type: string;                   // singleSelect: conversation_sync | feedback_push | prompt_push
   Chatbot_Link: string[];             // multipleRecordLinks → Chatbase_Chatbots
   Triggered_By: string[];             // multipleRecordLinks → Users
-  Triggered_By_Email: string;         // singleLineText fallback
+  Triggered_By_Txt: string;           // singleLineText fallback
   // Feedback push fields
   Feedback_Reviews_Link: string[];    // multipleRecordLinks → Message_Reviews
   Feedback_Text_Transmitted: string;  // multilineText — full source text sent to Chatbase
@@ -194,7 +194,7 @@ export function syncJobStartFields(
   };
   if (chatbotRecordId) fields.Chatbot_Link = [chatbotRecordId];
   if (userRecordId) fields.Triggered_By = [userRecordId];
-  if (userEmail) fields.Triggered_By_Email = userEmail;
+  if (userEmail) fields.Triggered_By_Txt = userEmail;
   return fields;
 }
 
