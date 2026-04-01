@@ -43,7 +43,7 @@ export async function pushFeedbackAsSource(
   }
 
   const reviews = await listRecords<MessageReviewFields>(TABLES.MESSAGE_REVIEWS, {
-    filterByFormula: `AND({Send_To_Chatbase}=1, {Feedback_Sync_Status}!="sent", {Message_Feedback_Concat}!="")`,
+    filterByFormula: `AND({Send_To_Chatbase}=1, {Change_Status}="Approved", {Message_Feedback_Concat}!="")`,
   });
 
   console.log(`[pushFeedbackAsSource] chatbot=${chatbaseId} reviews=${reviews.length}`);
