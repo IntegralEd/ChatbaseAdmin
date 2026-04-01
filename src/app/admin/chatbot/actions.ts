@@ -113,6 +113,18 @@ export async function toggleSendToChatbase(
   });
 }
 
+/**
+ * Toggle Queue_For_Push on a single prompt change — called from the embed panel checkbox.
+ */
+export async function toggleQueueForPush(
+  changeId: string,
+  value: boolean,
+): Promise<void> {
+  await updateRecord<PromptChangeRequestFields>(TABLES.PROMPT_CHANGE_REQUESTS, changeId, {
+    Queue_For_Push: value,
+  });
+}
+
 // ── Push a single prompt change to Chatbase ───────────────────────────────────
 
 export interface PromptPushResult {

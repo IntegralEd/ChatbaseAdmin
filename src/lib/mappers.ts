@@ -94,6 +94,7 @@ export interface PromptChangeRequestFields {
   Proposed_Prompt_Text: string;
   Proposed_Source_Change: string;
   Change_Status: string;
+  Queue_For_Push: boolean;      // checkbox — exactly one should be checked before pushing
   // Source_Message_Links correctly links to Chatbase_Messages (schema fixed 2026-03-30)
   Source_Message_Links: string[];
   Requested_By: string[];

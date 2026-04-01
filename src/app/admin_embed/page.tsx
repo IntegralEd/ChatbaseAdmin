@@ -14,7 +14,7 @@
 
 import { useState, useEffect, useTransition } from 'react';
 import { loadChatbotPanel, type ChatbotPanelData } from './data-actions';
-import { pushFeedbackAsSource, pushPromptChange, toggleSendToChatbase } from '@/app/admin/chatbot/actions';
+import { pushFeedbackAsSource, pushPromptChange, toggleSendToChatbase, toggleQueueForPush } from '@/app/admin/chatbot/actions';
 import { syncAll } from '@/app/admin/actions';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -115,7 +115,7 @@ function FeedbackRow({ review: r, onToggle }: {
   return (
     <>
       <tr>
-        <td style={{ textAlign: 'center' }}>
+        <td style={{ textAlign: 'center', verticalAlign: 'top', paddingTop: '0.6rem' }}>
           <SendToChatbaseToggle
             reviewId={r.id}
             checked={!!r.fields.Send_To_Chatbase}
@@ -124,6 +124,8 @@ function FeedbackRow({ review: r, onToggle }: {
         </td>
         <td style={{
           fontWeight: 600,
+          verticalAlign: 'top',
+          whiteSpace: 'nowrap',
           color: r.fields.Internal_Rating?.toLowerCase() === 'positive'
             ? 'var(--color-success)'
             : r.fields.Internal_Rating?.toLowerCase() === 'negative'
@@ -131,22 +133,24 @@ function FeedbackRow({ review: r, onToggle }: {
         }}>
           {r.fields.Internal_Rating ?? '—'}
         </td>
-        <td>
+        <td style={{ verticalAlign: 'top' }}>
           {concat ? (
-            <span
-              style={{ cursor: 'pointer', textDecoration: 'underline dotted', fontSize: '0.8rem' }}
-              title={concat}
-              onClick={() => setExpanded((v) => !v)}
-            >
-              {concat.length > 80 ? concat.slice(0, 80) + '…' : concat}
-            </span>
+            <div>
+              <div style={{ fontSize: '0.8rem', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{concat}</div>
+              <button
+                onClick={() => setExpanded((v) => !v)}
+                style={{ marginTop: '0.3rem', fontSize: '0.7rem', color: 'var(--color-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+              >
+                {expanded ? '▲ hide detail' : '▼ show original / suggested'}
+              </button>
+            </div>
           ) : (
             <span style={{ color: 'var(--color-muted)', fontSize: '0.8rem' }}>
               No Message_Feedback_Concat — add formula field in Airtable
             </span>
           )}
         </td>
-        <td style={{ color: r.fields.Feedback_Sync_Status === 'error' ? 'var(--color-danger)' : undefined }}>
+        <td style={{ color: r.fields.Feedback_Sync_Status === 'error' ? 'var(--color-danger)' : undefined, verticalAlign: 'top', whiteSpace: 'nowrap' }}>
           {r.fields.Feedback_Sync_Status || 'pending'}
         </td>
       </tr>
@@ -178,6 +182,24 @@ function FeedbackRow({ review: r, onToggle }: {
         </tr>
       )}
     </>
+  );
+}
+
+function QueueForPushToggle({ changeId, checked, onToggle }: {
+  changeId: string; checked: boolean; onToggle: () => void;
+}) {
+  const [pending, start] = useTransition();
+  return (
+    <input
+      type="checkbox"
+      checked={checked}
+      disabled={pending}
+      style={{ cursor: pending ? 'wait' : 'pointer' }}
+      onChange={(e) => { start(async () => {
+        await toggleQueueForPush(changeId, e.target.checked);
+        onToggle();
+      }); }}
+    />
   );
 }
 
@@ -333,38 +355,82 @@ export default function AdminEmbedPage() {
 
         {changes.length === 0 ? (
           <p className="text-muted" style={{ fontSize: '0.875rem' }}>No queued prompt changes.</p>
-        ) : (
-          <div className="card table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Title</th>
-                  <th>Type</th>
-                  <th>Status</th>
-                  <th>Pushed</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {changes.map((c) => (
-                  <tr key={c.id}>
-                    <td>{c.fields.Change_Title ?? '—'}</td>
-                    <td>{c.fields.Change_Type ?? '—'}</td>
-                    <td>{c.fields.Change_Status ?? '—'}</td>
-                    <td>{fmt(c.fields.Pushed_Datetime)}</td>
-                    <td>
-                      <PushPromptBtn
-                        changeId={c.id}
-                        chatbotRecordId={recordId!}
-                        onDone={reload}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        ) : (() => {
+          const queued = changes.filter((c) => !!c.fields.Queue_For_Push);
+          const canPush = queued.length === 1;
+          const tooMany = queued.length > 1;
+          return (
+            <>
+              {tooMany && (
+                <div style={{
+                  marginBottom: '0.75rem',
+                  padding: '0.6rem 0.85rem',
+                  background: 'var(--color-warning-bg, #fffbeb)',
+                  border: '1px solid var(--color-warning, #f59e0b)',
+                  borderRadius: '6px',
+                  fontSize: '0.8rem',
+                  color: 'var(--color-warning-text, #92400e)',
+                }}>
+                  {queued.length} changes are checked — uncheck all but one before pushing.
+                  Each push replaces the full system prompt.
+                </div>
+              )}
+              {!canPush && !tooMany && (
+                <p style={{ fontSize: '0.8rem', color: 'var(--color-muted)', marginBottom: '0.6rem' }}>
+                  Check exactly one change to enable Push.
+                </p>
+              )}
+              <div className="card table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th title="Queue for push">Push</th>
+                      <th>Title</th>
+                      <th>Type</th>
+                      <th>Status</th>
+                      <th>Pushed</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {changes.map((c) => (
+                      <tr key={c.id}>
+                        <td style={{ textAlign: 'center', verticalAlign: 'top', paddingTop: '0.6rem' }}>
+                          <QueueForPushToggle
+                            changeId={c.id}
+                            checked={!!c.fields.Queue_For_Push}
+                            onToggle={reload}
+                          />
+                        </td>
+                        <td>{c.fields.Change_Title ?? '—'}</td>
+                        <td>{c.fields.Change_Type ?? '—'}</td>
+                        <td>{c.fields.Change_Status ?? '—'}</td>
+                        <td>{fmt(c.fields.Pushed_Datetime)}</td>
+                        <td>
+                          {canPush && c.fields.Queue_For_Push ? (
+                            <PushPromptBtn
+                              changeId={c.id}
+                              chatbotRecordId={recordId!}
+                              onDone={reload}
+                            />
+                          ) : (
+                            <button
+                              className="btn btn-sm btn-primary"
+                              disabled
+                              title={tooMany ? 'Uncheck other changes first' : 'Check this change to enable push'}
+                            >
+                              Push
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          );
+        })()}
       </section>
     </div>
   );

@@ -26,16 +26,9 @@ using Softr's URL parameter feature so it passes the correct record ID.
 COPY EVERYTHING BELOW THIS LINE INTO YOUR SOFTR CUSTOM CODE BLOCK
 ================================================================================
 
-<!-- Debug spans — visible so you can confirm Softr resolves both values.
-     cb-record-id shows whether {RECORD_ID} substitutes in Custom Code blocks
-     (expected: it won't — recordId is read from the URL instead).
-     cb-user-email must show a real email before the iframe loads.
-     Remove or hide these once everything is working.                      -->
-<div style="font-size:11px; color:#888; margin-bottom:4px;">
-  🔍 record: <span id="cb-record-id">{RECORD_ID}</span>
-  &nbsp;|&nbsp;
-  email: <span id="cb-user-email">{LOGGED_IN_USER:EMAIL}</span>
-</div>
+<!-- Hidden span — Softr resolves {LOGGED_IN_USER:EMAIL} asynchronously.
+     Not visible to users; required for the embed script to read the email. -->
+<span id="cb-user-email" style="display:none">{LOGGED_IN_USER:EMAIL}</span>
 
 <!-- Embed container — adjust height to suit your layout -->
 <div
