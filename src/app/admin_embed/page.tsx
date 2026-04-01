@@ -329,6 +329,9 @@ export default function AdminEmbedPage() {
           <p style={{ margin: '0.2rem 0 0', fontSize: '0.75rem', color: 'var(--color-muted)' }}>
             ID: {chatbot!.fields.Chatbase_Chatbot_ID ?? '—'}
             {userEmail && <> &nbsp;·&nbsp; {userEmail}</>}
+            {chatbot!.fields.Last_Trained && (
+              <> &nbsp;·&nbsp; Last trained: {fmt(chatbot!.fields.Last_Trained)}</>
+            )}
           </p>
         </div>
         <SyncBtn onDone={reload} userEmail={userEmail ?? undefined} />
@@ -443,29 +446,33 @@ export default function AdminEmbedPage() {
                           </td>
                           <td>{fmt(c.fields.Pushed_Datetime)}</td>
                           <td>
-                            {pushable ? (
-                              <PushPromptBtn
-                                changeId={c.id}
-                                chatbotRecordId={recordId!}
-                                onDone={reload}
-                              />
-                            ) : !isApproved ? (
-                              <span style={{ display: 'inline-flex', gap: '0.4rem' }}>
-                                <ApproveBtn changeId={c.id} onDone={reload} />
-                                <RejectBtn id={c.id} type="change" onDone={reload} />
-                              </span>
-                            ) : (
-                              <span style={{ display: 'inline-flex', gap: '0.4rem' }}>
-                                <button
-                                  className="btn btn-sm btn-primary"
-                                  disabled
-                                  title={disabledTitle}
-                                >
-                                  Push
+                            <span style={{ display: 'inline-flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                              {isApproved ? (
+                                <button className="btn btn-sm btn-primary" disabled title="Already approved">
+                                  Approve
                                 </button>
-                                <RejectBtn id={c.id} type="change" onDone={reload} />
-                              </span>
-                            )}
+                              ) : (
+                                <ApproveBtn changeId={c.id} onDone={reload} />
+                              )}
+                              <RejectBtn id={c.id} type="change" onDone={reload} />
+                              {isApproved && (
+                                pushable ? (
+                                  <PushPromptBtn
+                                    changeId={c.id}
+                                    chatbotRecordId={recordId!}
+                                    onDone={reload}
+                                  />
+                                ) : (
+                                  <button
+                                    className="btn btn-sm btn-primary"
+                                    disabled
+                                    title={disabledTitle}
+                                  >
+                                    Push
+                                  </button>
+                                )
+                              )}
+                            </span>
                           </td>
                         </tr>
                       );

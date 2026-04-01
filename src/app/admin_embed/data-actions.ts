@@ -25,7 +25,7 @@ export async function loadChatbotPanel(recordId: string): Promise<ChatbotPanelDa
     const [chatbotResult, reviewsResult, changesResult] = await Promise.allSettled([
       getRecord<ChatbotFields>(TABLES.CHATBOTS, recordId),
       listRecords<MessageReviewFields>(TABLES.MESSAGE_REVIEWS, {
-        filterByFormula: `{Change_Status}="Requested"`,
+        filterByFormula: `OR({Change_Status}="Requested",{Change_Status}="Approved")`,
         sort: [{ field: 'Feedback_Sync_At', direction: 'asc' }],
       }),
       listRecords<PromptChangeRequestFields>(TABLES.PROMPT_CHANGE_REQUESTS, {

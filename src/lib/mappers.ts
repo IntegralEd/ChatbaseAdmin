@@ -18,6 +18,7 @@ import type { ChatbaseConversation, ChatbaseEmbeddedMessage, ChatbaseMessage } f
 export interface ChatbotFields {
   Chatbase_Chatbot_ID: string;
   Chatbot_Name: string;
+  Last_Trained: string;         // dateTime — populated when chatbot profile is synced
   'Chatbots instructions': string;
   'Chatbots model': string;
   'Chatbots status': string;
