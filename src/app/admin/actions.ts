@@ -2,10 +2,11 @@
 
 import { TABLES } from '@/lib/constants';
 import { listRecords, createRecord, updateRecord, upsertRecords } from '@/lib/airtable';
-import { fetchAllConversations } from '@/lib/chatbase';
+import { fetchAllConversations, fetchAllChatbotProfiles } from '@/lib/chatbase';
 import {
   conversationToAirtableFields,
   embeddedMessageToAirtableFields,
+  chatbotProfileToAirtableFields,
   syncJobStartFields,
   syncJobSuccessFields,
   syncJobErrorFields,
@@ -66,10 +67,13 @@ export async function syncAll(force = false, userEmail?: string): Promise<SyncRe
   }
 
   try {
-    // Load existing conversations for incremental diffing
-    const existingConvRecords = await listRecords<ConversationFields>(TABLES.CONVERSATIONS, {
-      fields: ['Conversation_ID', 'Last_Message_At', 'Message_Count'],
-    });
+    // Fetch Chatbase profiles + existing conversations in parallel
+    const [chatbotProfiles, existingConvRecords] = await Promise.all([
+      fetchAllChatbotProfiles(),
+      listRecords<ConversationFields>(TABLES.CONVERSATIONS, {
+        fields: ['Conversation_ID', 'Last_Message_At', 'Message_Count'],
+      }),
+    ]);
     const existingConvMap = new Map(
       existingConvRecords.map((r) => [
         r.fields.Conversation_ID,
@@ -79,6 +83,17 @@ export async function syncAll(force = false, userEmail?: string): Promise<SyncRe
           messageCount: r.fields.Message_Count ?? 0,
         },
       ]),
+    );
+
+    // Update chatbot profile fields from Chatbase for all matched records
+    await Promise.all(
+      chatbots
+        .filter((c) => chatbotProfiles.has(c.fields.Chatbase_Chatbot_ID))
+        .map((c) => updateRecord<ChatbotFields>(
+          TABLES.CHATBOTS,
+          c.id,
+          chatbotProfileToAirtableFields(chatbotProfiles.get(c.fields.Chatbase_Chatbot_ID)!),
+        )),
     );
 
     let totalConversations = 0;

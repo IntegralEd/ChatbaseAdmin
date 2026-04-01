@@ -51,6 +51,31 @@ export interface ChatbotUpdatePayload {
   instructions?: string;
 }
 
+export interface ChatbaseChatbotProfile {
+  id: string;
+  name: string;
+  visibility: string;
+  created_at: string;
+  instructions: string;
+  index_name: string;
+  ip_limit: number;
+  ip_limit_timeframe: number;
+  ip_limit_message: string;
+  initial_messages: string[];
+  styles: {
+    theme?: string;
+    button_color?: string;
+    align_chat_button?: string;
+  } | null;
+  model: string;
+  last_message_at: string;
+  num_of_characters: number;
+  last_trained_at: string;
+  status: string;
+  temp: number;
+  only_allow_on_added_domains: boolean;
+}
+
 // ── Error ─────────────────────────────────────────────────────────────────────
 
 export class ChatbaseError extends Error {
@@ -122,6 +147,21 @@ export async function fetchAllConversations(
   } while (true);
 
   return all;
+}
+
+/**
+ * Fetch all chatbot profiles from Chatbase via GET /get-chatbots.
+ * Returns a map of chatbase ID → profile for easy lookup.
+ */
+export async function fetchAllChatbotProfiles(): Promise<Map<string, ChatbaseChatbotProfile>> {
+  const res = await chatbaseFetch<{ chatbots: { data: ChatbaseChatbotProfile[]; error: unknown } }>(
+    `${CHATBASE_API_BASE}/get-chatbots`,
+  );
+  const map = new Map<string, ChatbaseChatbotProfile>();
+  for (const bot of res.chatbots.data ?? []) {
+    map.set(bot.id, bot);
+  }
+  return map;
 }
 
 /**

@@ -11,7 +11,7 @@
  * (it used to link to Conversations) has been fixed in the schema.
  */
 
-import type { ChatbaseConversation, ChatbaseEmbeddedMessage, ChatbaseMessage } from './chatbase';
+import type { ChatbaseConversation, ChatbaseEmbeddedMessage, ChatbaseMessage, ChatbaseChatbotProfile } from './chatbase';
 
 // ── Chatbase_Chatbots ─────────────────────────────────────────────────────────
 
@@ -127,6 +127,33 @@ export interface SyncJobFields {
 }
 
 // ── Mappers ───────────────────────────────────────────────────────────────────
+
+export function chatbotProfileToAirtableFields(
+  profile: ChatbaseChatbotProfile,
+): Partial<ChatbotFields> {
+  const fields: Partial<ChatbotFields> = {
+    Chatbot_Name: profile.name,
+    'Chatbots instructions': profile.instructions,
+    'Chatbots model': profile.model,
+    'Chatbots status': profile.status,
+    'Chatbots visibility': profile.visibility,
+    'Chatbots last message at': profile.last_message_at,
+    'Chatbots last trained at': profile.last_trained_at,
+    'Chatbots num of characters': profile.num_of_characters,
+    'Chatbots temp': profile.temp,
+    'Chatbots only allow on added domains': profile.only_allow_on_added_domains,
+    Last_Trained: profile.last_trained_at,
+  };
+  if (profile.initial_messages?.length) {
+    fields['Chatbots initial messages'] = profile.initial_messages.join('\n');
+  }
+  if (profile.styles) {
+    if (profile.styles.theme) fields['Chatbots styles theme'] = profile.styles.theme;
+    if (profile.styles.button_color) fields['Chatbots styles button color'] = profile.styles.button_color;
+    if (profile.styles.align_chat_button) fields['Chatbots styles align chat button'] = profile.styles.align_chat_button;
+  }
+  return fields;
+}
 
 export function conversationToAirtableFields(
   conv: ChatbaseConversation,
