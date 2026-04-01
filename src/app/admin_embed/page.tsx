@@ -14,7 +14,7 @@
 
 import { useState, useEffect, useTransition } from 'react';
 import { loadChatbotPanel, type ChatbotPanelData } from './data-actions';
-import { pushFeedbackAsSource, pushPromptChange, toggleSendToChatbase, toggleQueueForPush, approvePromptChange, rejectMessageReview, rejectPromptChange } from '@/app/admin/chatbot/actions';
+import { pushFeedbackAsSource, pushPromptChange, toggleSendToChatbase, toggleQueueForPush, approvePromptChange, approveMessageReview, rejectMessageReview, rejectPromptChange } from '@/app/admin/chatbot/actions';
 import { syncAll } from '@/app/admin/actions';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -79,28 +79,39 @@ function PushFeedbackBtn({
             setIsErr(true);
           }
         }); }}>
-        {pending ? 'Sending…' : 'Send Feedback as Source'}
+        {pending ? 'Sending…' : 'Send Approved Items to Retrain'}
       </button>
       {msg && <StatusMsg msg={msg} isErr={isErr} />}
     </span>
   );
 }
 
-function SendToChatbaseToggle({ reviewId, checked, onToggle }: {
-  reviewId: string; checked: boolean; onToggle: () => void;
+function SendToChatbaseToggle({ reviewId, checked, onToggle, disabled = false }: {
+  reviewId: string; checked: boolean; onToggle: () => void; disabled?: boolean;
 }) {
   const [pending, start] = useTransition();
   return (
     <input
       type="checkbox"
       checked={checked}
-      disabled={pending}
-      style={{ cursor: pending ? 'wait' : 'pointer' }}
+      disabled={pending || disabled}
+      title={disabled ? 'Approve this review first' : undefined}
+      style={{ cursor: pending || disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.4 : 1 }}
       onChange={(e) => { start(async () => {
         await toggleSendToChatbase(reviewId, e.target.checked);
         onToggle();
       }); }}
     />
+  );
+}
+
+function ApproveMessageBtn({ reviewId, onDone }: { reviewId: string; onDone: () => void }) {
+  const [pending, start] = useTransition();
+  return (
+    <button className="btn btn-sm btn-primary" disabled={pending}
+      onClick={() => { start(async () => { await approveMessageReview(reviewId); onDone(); }); }}>
+      {pending ? 'Approving…' : 'Approve'}
+    </button>
   );
 }
 
@@ -112,6 +123,7 @@ function FeedbackRow({ review: r, onToggle }: {
   const concat = r.fields.Message_Feedback_Concat;
   const snippet = r.fields.Response_Snippet_to_Improve;
   const suggested = r.fields.Suggested_Response;
+  const isApproved = r.fields.Change_Status === 'Approved';
   return (
     <>
       <tr>
@@ -120,6 +132,7 @@ function FeedbackRow({ review: r, onToggle }: {
             reviewId={r.id}
             checked={!!r.fields.Send_To_Chatbase}
             onToggle={onToggle}
+            disabled={!isApproved}
           />
         </td>
         <td style={{
@@ -151,7 +164,16 @@ function FeedbackRow({ review: r, onToggle }: {
           )}
         </td>
         <td style={{ verticalAlign: 'top', whiteSpace: 'nowrap', paddingTop: '0.4rem' }}>
-          <RejectBtn id={r.id} type="review" onDone={onToggle} />
+          <span style={{ display: 'inline-flex', gap: '0.4rem' }}>
+            {isApproved ? (
+              <button className="btn btn-sm btn-primary" disabled title="Already approved">
+                Approve
+              </button>
+            ) : (
+              <ApproveMessageBtn reviewId={r.id} onDone={onToggle} />
+            )}
+            <RejectBtn id={r.id} type="review" onDone={onToggle} />
+          </span>
         </td>
       </tr>
       {expanded && (

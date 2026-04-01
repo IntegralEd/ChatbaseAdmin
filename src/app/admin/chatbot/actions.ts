@@ -113,6 +113,15 @@ export async function toggleSendToChatbase(
 }
 
 /**
+ * Approve a message review — sets Change_Status to 'Approved'.
+ */
+export async function approveMessageReview(reviewId: string): Promise<void> {
+  await updateRecord<MessageReviewFields>(TABLES.MESSAGE_REVIEWS, reviewId, {
+    Change_Status: 'Approved',
+  });
+}
+
+/**
  * Reject a message review — sets Change_Status to 'Rejected' and clears Send_To_Chatbase.
  */
 export async function rejectMessageReview(reviewId: string): Promise<void> {
