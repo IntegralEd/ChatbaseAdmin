@@ -14,7 +14,7 @@
 
 import { useState, useEffect, useTransition } from 'react';
 import { loadChatbotPanel, type ChatbotPanelData } from './data-actions';
-import { pushFeedbackAsSource, pushPromptChange, toggleSendToChatbase, toggleQueueForPush } from '@/app/admin/chatbot/actions';
+import { pushFeedbackAsSource, pushPromptChange, toggleSendToChatbase, toggleQueueForPush, approvePromptChange } from '@/app/admin/chatbot/actions';
 import { syncAll } from '@/app/admin/actions';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -182,6 +182,16 @@ function FeedbackRow({ review: r, onToggle }: {
         </tr>
       )}
     </>
+  );
+}
+
+function ApproveBtn({ changeId, onDone }: { changeId: string; onDone: () => void }) {
+  const [pending, start] = useTransition();
+  return (
+    <button className="btn btn-sm btn-primary" disabled={pending}
+      onClick={() => { start(async () => { await approvePromptChange(changeId); onDone(); }); }}>
+      {pending ? 'Approving…' : 'Approve'}
+    </button>
   );
 }
 
@@ -424,6 +434,8 @@ export default function AdminEmbedPage() {
                                 chatbotRecordId={recordId!}
                                 onDone={reload}
                               />
+                            ) : !isApproved ? (
+                              <ApproveBtn changeId={c.id} onDone={reload} />
                             ) : (
                               <button
                                 className="btn btn-sm btn-primary"

@@ -113,6 +113,15 @@ export async function toggleSendToChatbase(
 }
 
 /**
+ * Approve a prompt change — sets Change_Status to 'Approved'.
+ */
+export async function approvePromptChange(changeId: string): Promise<void> {
+  await updateRecord<PromptChangeRequestFields>(TABLES.PROMPT_CHANGE_REQUESTS, changeId, {
+    Change_Status: 'Approved',
+  });
+}
+
+/**
  * Toggle Queue_For_Push on a single prompt change — called from the embed panel checkbox.
  */
 export async function toggleQueueForPush(
