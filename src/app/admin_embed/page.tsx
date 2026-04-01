@@ -14,7 +14,7 @@
 
 import { useState, useEffect, useTransition } from 'react';
 import { loadChatbotPanel, type ChatbotPanelData } from './data-actions';
-import { pushFeedbackAsSource, pushPromptChange, toggleSendToChatbase, toggleQueueForPush, approvePromptChange } from '@/app/admin/chatbot/actions';
+import { pushFeedbackAsSource, pushPromptChange, toggleSendToChatbase, toggleQueueForPush, approvePromptChange, rejectMessageReview, rejectPromptChange } from '@/app/admin/chatbot/actions';
 import { syncAll } from '@/app/admin/actions';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -150,13 +150,13 @@ function FeedbackRow({ review: r, onToggle }: {
             </span>
           )}
         </td>
-        <td style={{ verticalAlign: 'top', whiteSpace: 'nowrap' }}>
-          {r.fields.Change_Status || 'Requested'}
+        <td style={{ verticalAlign: 'top', whiteSpace: 'nowrap', paddingTop: '0.4rem' }}>
+          <RejectBtn id={r.id} type="review" onDone={onToggle} />
         </td>
       </tr>
       {expanded && (
         <tr>
-          <td colSpan={4} style={{ background: 'var(--color-surface, #f9fafb)', padding: '0.75rem 1rem' }}>
+          <td colSpan={5} style={{ background: 'var(--color-surface, #f9fafb)', padding: '0.75rem 1rem' }}>
             {snippet && (
               <div style={{ marginBottom: '0.5rem' }}>
                 <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--color-muted)', marginBottom: '0.2rem' }}>
@@ -182,6 +182,21 @@ function FeedbackRow({ review: r, onToggle }: {
         </tr>
       )}
     </>
+  );
+}
+
+function RejectBtn({ id, type, onDone }: { id: string; type: 'review' | 'change'; onDone: () => void }) {
+  const [pending, start] = useTransition();
+  return (
+    <button className="btn btn-sm" disabled={pending}
+      style={{ color: 'var(--color-danger)', borderColor: 'var(--color-danger)', background: 'none' }}
+      onClick={() => { start(async () => {
+        if (type === 'review') await rejectMessageReview(id);
+        else await rejectPromptChange(id);
+        onDone();
+      }); }}>
+      {pending ? 'Rejecting…' : 'Reject'}
+    </button>
   );
 }
 
@@ -341,7 +356,7 @@ export default function AdminEmbedPage() {
                   <th title="Include in next batch send">Send</th>
                   <th>Rating</th>
                   <th>Feedback</th>
-                  <th>Status</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -435,15 +450,21 @@ export default function AdminEmbedPage() {
                                 onDone={reload}
                               />
                             ) : !isApproved ? (
-                              <ApproveBtn changeId={c.id} onDone={reload} />
+                              <span style={{ display: 'inline-flex', gap: '0.4rem' }}>
+                                <ApproveBtn changeId={c.id} onDone={reload} />
+                                <RejectBtn id={c.id} type="change" onDone={reload} />
+                              </span>
                             ) : (
-                              <button
-                                className="btn btn-sm btn-primary"
-                                disabled
-                                title={disabledTitle}
-                              >
-                                Push
-                              </button>
+                              <span style={{ display: 'inline-flex', gap: '0.4rem' }}>
+                                <button
+                                  className="btn btn-sm btn-primary"
+                                  disabled
+                                  title={disabledTitle}
+                                >
+                                  Push
+                                </button>
+                                <RejectBtn id={c.id} type="change" onDone={reload} />
+                              </span>
                             )}
                           </td>
                         </tr>

@@ -113,6 +113,26 @@ export async function toggleSendToChatbase(
 }
 
 /**
+ * Reject a message review — sets Change_Status to 'Rejected' and clears Send_To_Chatbase.
+ */
+export async function rejectMessageReview(reviewId: string): Promise<void> {
+  await updateRecord<MessageReviewFields>(TABLES.MESSAGE_REVIEWS, reviewId, {
+    Change_Status: 'Rejected',
+    Send_To_Chatbase: false,
+  });
+}
+
+/**
+ * Reject a prompt change — sets Change_Status to 'Rejected'.
+ */
+export async function rejectPromptChange(changeId: string): Promise<void> {
+  await updateRecord<PromptChangeRequestFields>(TABLES.PROMPT_CHANGE_REQUESTS, changeId, {
+    Change_Status: 'Rejected',
+    Queue_For_Push: false,
+  });
+}
+
+/**
  * Approve a prompt change — sets Change_Status to 'Approved'.
  */
 export async function approvePromptChange(changeId: string): Promise<void> {
