@@ -83,7 +83,7 @@ export async function pushFeedbackAsSource(
       }),
       ...reviews.map((r) =>
         updateRecord<MessageReviewFields>(TABLES.MESSAGE_REVIEWS, r.id, {
-          Feedback_Sync_Status: 'sent',
+          Change_Status: 'Pushed',
           Feedback_Sync_At: now,
           Sync_Jobs: [job.id],
         }),

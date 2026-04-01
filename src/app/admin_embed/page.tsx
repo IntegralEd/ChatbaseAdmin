@@ -150,8 +150,8 @@ function FeedbackRow({ review: r, onToggle }: {
             </span>
           )}
         </td>
-        <td style={{ color: r.fields.Feedback_Sync_Status === 'error' ? 'var(--color-danger)' : undefined, verticalAlign: 'top', whiteSpace: 'nowrap' }}>
-          {r.fields.Feedback_Sync_Status || 'pending'}
+        <td style={{ verticalAlign: 'top', whiteSpace: 'nowrap' }}>
+          {r.fields.Change_Status || 'Requested'}
         </td>
       </tr>
       {expanded && (
@@ -356,35 +356,31 @@ export default function AdminEmbedPage() {
         {changes.length === 0 ? (
           <p className="text-muted" style={{ fontSize: '0.875rem' }}>No queued prompt changes.</p>
         ) : (() => {
-          const queued = changes.filter((c) => !!c.fields.Queue_For_Push);
-          const canPush = queued.length === 1;
-          const tooMany = queued.length > 1;
+          // Both gates must pass: Change_Status="Approved" AND Queue_For_Push checked
+          const readyToSend = changes.filter(
+            (c) => c.fields.Change_Status === 'Approved' && !!c.fields.Queue_For_Push,
+          );
+          const canPush = readyToSend.length === 1;
+          const tooMany = readyToSend.length > 1;
           return (
             <>
               {tooMany && (
                 <div style={{
-                  marginBottom: '0.75rem',
-                  padding: '0.6rem 0.85rem',
+                  marginBottom: '0.75rem', padding: '0.6rem 0.85rem',
                   background: 'var(--color-warning-bg, #fffbeb)',
                   border: '1px solid var(--color-warning, #f59e0b)',
-                  borderRadius: '6px',
-                  fontSize: '0.8rem',
+                  borderRadius: '6px', fontSize: '0.8rem',
                   color: 'var(--color-warning-text, #92400e)',
                 }}>
-                  {queued.length} changes are checked — uncheck all but one before pushing.
+                  {readyToSend.length} changes are approved + checked — uncheck all but one.
                   Each push replaces the full system prompt.
                 </div>
-              )}
-              {!canPush && !tooMany && (
-                <p style={{ fontSize: '0.8rem', color: 'var(--color-muted)', marginBottom: '0.6rem' }}>
-                  Check exactly one change to enable Push.
-                </p>
               )}
               <div className="card table-wrap">
                 <table>
                   <thead>
                     <tr>
-                      <th title="Queue for push">Push</th>
+                      <th title="Queue for push">Queue</th>
                       <th>Title</th>
                       <th>Type</th>
                       <th>Status</th>
@@ -393,38 +389,54 @@ export default function AdminEmbedPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {changes.map((c) => (
-                      <tr key={c.id}>
-                        <td style={{ textAlign: 'center', verticalAlign: 'top', paddingTop: '0.6rem' }}>
-                          <QueueForPushToggle
-                            changeId={c.id}
-                            checked={!!c.fields.Queue_For_Push}
-                            onToggle={reload}
-                          />
-                        </td>
-                        <td>{c.fields.Change_Title ?? '—'}</td>
-                        <td>{c.fields.Change_Type ?? '—'}</td>
-                        <td>{c.fields.Change_Status ?? '—'}</td>
-                        <td>{fmt(c.fields.Pushed_Datetime)}</td>
-                        <td>
-                          {canPush && c.fields.Queue_For_Push ? (
-                            <PushPromptBtn
+                    {changes.map((c) => {
+                      const isApproved = c.fields.Change_Status === 'Approved';
+                      const isQueued = !!c.fields.Queue_For_Push;
+                      const pushable = canPush && isApproved && isQueued;
+                      const disabledTitle = !isApproved
+                        ? 'Change status to Approved in Airtable first'
+                        : tooMany
+                        ? 'Uncheck other approved changes first'
+                        : 'Check the Queue box to enable push';
+                      return (
+                        <tr key={c.id}>
+                          <td style={{ textAlign: 'center', verticalAlign: 'top', paddingTop: '0.6rem' }}>
+                            <QueueForPushToggle
                               changeId={c.id}
-                              chatbotRecordId={recordId!}
-                              onDone={reload}
+                              checked={isQueued}
+                              onToggle={reload}
                             />
-                          ) : (
-                            <button
-                              className="btn btn-sm btn-primary"
-                              disabled
-                              title={tooMany ? 'Uncheck other changes first' : 'Check this change to enable push'}
-                            >
-                              Push
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td>{c.fields.Change_Title ?? '—'}</td>
+                          <td>{c.fields.Change_Type ?? '—'}</td>
+                          <td style={{
+                            fontWeight: isApproved ? 600 : undefined,
+                            color: isApproved ? 'var(--color-success)' : 'var(--color-muted)',
+                            whiteSpace: 'nowrap',
+                          }}>
+                            {c.fields.Change_Status ?? '—'}
+                          </td>
+                          <td>{fmt(c.fields.Pushed_Datetime)}</td>
+                          <td>
+                            {pushable ? (
+                              <PushPromptBtn
+                                changeId={c.id}
+                                chatbotRecordId={recordId!}
+                                onDone={reload}
+                              />
+                            ) : (
+                              <button
+                                className="btn btn-sm btn-primary"
+                                disabled
+                                title={disabledTitle}
+                              >
+                                Push
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

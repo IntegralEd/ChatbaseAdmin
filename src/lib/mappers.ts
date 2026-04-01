@@ -72,7 +72,7 @@ export interface MessageReviewFields {
   Reviewer: string[];           // multipleRecordLinks → Users
   Internal_Rating: string;
   Send_To_Chatbase: boolean;
-  Feedback_Sync_Status: string;
+  Change_Status: string;        // singleSelect: Requested | Approved | Pushed | Sync Complete
   Feedback_Sync_At: string;
   Issue_Type: string;
   Internal_Notes: string;
