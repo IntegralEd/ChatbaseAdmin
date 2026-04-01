@@ -83,7 +83,7 @@ export async function pushFeedbackAsSource(
       }),
       ...reviews.map((r) =>
         updateRecord<MessageReviewFields>(TABLES.MESSAGE_REVIEWS, r.id, {
-          Change_Status: 'Pushed',
+          Change_Status: 'Sync Complete',
           Feedback_Sync_At: now,
           Sync_Jobs: [job.id],
         }),
@@ -222,7 +222,7 @@ export async function pushPromptChange(
         Records_Imported: '1',
       }),
       updateRecord<PromptChangeRequestFields>(TABLES.PROMPT_CHANGE_REQUESTS, changeId, {
-        Change_Status: 'Pushed',
+        Change_Status: 'Sync Complete',
         Pushed_Datetime: now,
         Chatbase_Update_Result: 'success',
         Sync_Jobs: [job.id],
