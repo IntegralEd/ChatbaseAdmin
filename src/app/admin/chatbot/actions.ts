@@ -65,8 +65,9 @@ export async function pushFeedbackAsSource(
       return { ok: false, sent: 0, errors: 1, details: ['Compiled_Message_Reviews is empty on chatbot record'] };
     }
 
-    // Format for Chatbase: H1 header + rollup body (rollup uses HTML tags for structure)
-    const compiledText = `<h1>Compiled Message Feedback</h1>\n${rollupText}`;
+    // Chatbase uses the first line of sourceText as the document title — plain text gives
+    // a clean title. HTML in the rollup body (<h2>, <p>, <hr>) is parsed by the editor.
+    const compiledText = `Compiled Message Feedback\n\n${rollupText}`;
 
     console.log(`[pushFeedbackAsSource] chatbot=${chatbaseId} compiledLength=${compiledText.length}`);
 
