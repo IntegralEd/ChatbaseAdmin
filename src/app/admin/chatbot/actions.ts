@@ -65,8 +65,8 @@ export async function pushFeedbackAsSource(
       return { ok: false, sent: 0, errors: 1, details: ['Compiled_Message_Reviews is empty on chatbot record'] };
     }
 
-    // Format for Chatbase: header + double line breaks after each separator
-    const compiledText = `Compiled Message Feedback\n\n${rollupText.replace(/---/g, '---\n\n')}`;
+    // Format for Chatbase: H1 header + rollup body (rollup uses HTML tags for structure)
+    const compiledText = `<h1>Compiled Message Feedback</h1>\n${rollupText}`;
 
     console.log(`[pushFeedbackAsSource] chatbot=${chatbaseId} compiledLength=${compiledText.length}`);
 
