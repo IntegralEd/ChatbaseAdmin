@@ -60,10 +60,13 @@ export async function pushFeedbackAsSource(
     // value overwrites with the full current set — no manual accumulation needed.
     // Guard against rollup returning an array instead of a string.
     const raw = chatbot.fields.Compiled_Message_Reviews;
-    const compiledText = Array.isArray(raw) ? raw.join('\n') : (raw ?? '');
-    if (!compiledText) {
+    const rollupText = Array.isArray(raw) ? raw.join('\n') : (raw ?? '');
+    if (!rollupText) {
       return { ok: false, sent: 0, errors: 1, details: ['Compiled_Message_Reviews is empty on chatbot record'] };
     }
+
+    // Format for Chatbase: header + double line breaks after each separator
+    const compiledText = `Compiled Message Feedback\n\n${rollupText.replace(/---/g, '---\n\n')}`;
 
     console.log(`[pushFeedbackAsSource] chatbot=${chatbaseId} compiledLength=${compiledText.length}`);
 
