@@ -36,69 +36,77 @@ export async function pushFeedbackAsSource(
   chatbotRecordId: string,
   userEmail?: string,
 ): Promise<FeedbackPushResult> {
-  const chatbot = await getRecord<ChatbotFields>(TABLES.CHATBOTS, chatbotRecordId);
-  const chatbaseId = chatbot.fields.Chatbase_Chatbot_ID;
-  const chatbotName = chatbot.fields.Chatbot_Name;
-  if (!chatbaseId || !chatbotName) {
-    return { ok: false, sent: 0, errors: 1, details: ['Chatbot has no Chatbase_Chatbot_ID or Chatbot_Name'] };
-  }
-
-  const reviews = await listRecords<MessageReviewFields>(TABLES.MESSAGE_REVIEWS, {
-    filterByFormula: `AND({Send_To_Chatbase}=1, {Change_Status}="Approved", {Message_Feedback_Concat}!="")`,
-  });
-
-  console.log(`[pushFeedbackAsSource] chatbot=${chatbaseId} reviews=${reviews.length}`);
-
-  if (reviews.length === 0) {
-    return { ok: true, sent: 0, errors: 0, details: ['No pending feedback with Message_Feedback_Concat filled.'] };
-  }
-
-  // Compiled_Message_Reviews is an Airtable rollup on Chatbase_Chatbots that
-  // auto-concatenates all Message_Reviews with Change_Status = Approved or Sync Complete.
-  // Chatbase replaces sourceText entirely on every POST, so sending this rollup
-  // value overwrites with the full current set — no manual accumulation needed.
-  const compiledText = chatbot.fields.Compiled_Message_Reviews ?? '';
-  if (!compiledText) {
-    return { ok: false, sent: 0, errors: 1, details: ['Compiled_Message_Reviews is empty on chatbot record'] };
-  }
-
-  console.log(`[pushFeedbackAsSource] chatbot=${chatbaseId} compiledLength=${compiledText.length}`);
-
-  // Create Sync_Job audit record
-  const job = await createRecord<SyncJobFields>(TABLES.SYNC_JOBS, {
-    Job_Type: 'feedback_push',
-    Started_At: new Date().toISOString(),
-    Chatbot_Link: [chatbotRecordId],
-    Feedback_Reviews_Link: reviews.map((r) => r.id),
-    Feedback_Reviews_Count: String(reviews.length),
-    Feedback_Text_Transmitted: compiledText,
-  });
-
   try {
-    await updateChatbotData(chatbaseId, chatbotName, compiledText);
-    const now = new Date().toISOString();
-    await Promise.all([
-      updateRecord<SyncJobFields>(TABLES.SYNC_JOBS, job.id, {
-        Completed_At: now,
-        Records_Imported: String(reviews.length),
-      }),
-      ...reviews.map((r) =>
-        updateRecord<MessageReviewFields>(TABLES.MESSAGE_REVIEWS, r.id, {
-          Change_Status: 'Sync Complete',
-          Feedback_Sync_At: now,
-          Sync_Jobs: [job.id],
+    const chatbot = await getRecord<ChatbotFields>(TABLES.CHATBOTS, chatbotRecordId);
+    const chatbaseId = chatbot.fields.Chatbase_Chatbot_ID;
+    const chatbotName = chatbot.fields.Chatbot_Name;
+    if (!chatbaseId || !chatbotName) {
+      return { ok: false, sent: 0, errors: 1, details: ['Chatbot has no Chatbase_Chatbot_ID or Chatbot_Name'] };
+    }
+
+    const reviews = await listRecords<MessageReviewFields>(TABLES.MESSAGE_REVIEWS, {
+      filterByFormula: `AND({Send_To_Chatbase}=1, {Change_Status}="Approved", {Message_Feedback_Concat}!="")`,
+    });
+
+    console.log(`[pushFeedbackAsSource] chatbot=${chatbaseId} reviews=${reviews.length}`);
+
+    if (reviews.length === 0) {
+      return { ok: true, sent: 0, errors: 0, details: ['No pending feedback with Message_Feedback_Concat filled.'] };
+    }
+
+    // Compiled_Message_Reviews is an Airtable rollup on Chatbase_Chatbots that
+    // auto-concatenates all Message_Reviews with Change_Status = Approved or Sync Complete.
+    // Chatbase replaces sourceText entirely on every POST, so sending this rollup
+    // value overwrites with the full current set — no manual accumulation needed.
+    // Guard against rollup returning an array instead of a string.
+    const raw = chatbot.fields.Compiled_Message_Reviews;
+    const compiledText = Array.isArray(raw) ? raw.join('\n') : (raw ?? '');
+    if (!compiledText) {
+      return { ok: false, sent: 0, errors: 1, details: ['Compiled_Message_Reviews is empty on chatbot record'] };
+    }
+
+    console.log(`[pushFeedbackAsSource] chatbot=${chatbaseId} compiledLength=${compiledText.length}`);
+
+    // Create Sync_Job audit record
+    const job = await createRecord<SyncJobFields>(TABLES.SYNC_JOBS, {
+      Job_Type: 'feedback_push',
+      Started_At: new Date().toISOString(),
+      Chatbot_Link: [chatbotRecordId],
+      Feedback_Reviews_Link: reviews.map((r) => r.id),
+      Feedback_Reviews_Count: String(reviews.length),
+      Feedback_Text_Transmitted: compiledText,
+    });
+
+    try {
+      await updateChatbotData(chatbaseId, chatbotName, compiledText);
+      const now = new Date().toISOString();
+      await Promise.all([
+        updateRecord<SyncJobFields>(TABLES.SYNC_JOBS, job.id, {
+          Completed_At: now,
+          Records_Imported: String(reviews.length),
         }),
-      ),
-    ]);
-    return { ok: true, sent: reviews.length, errors: 0, details: [] };
+        ...reviews.map((r) =>
+          updateRecord<MessageReviewFields>(TABLES.MESSAGE_REVIEWS, r.id, {
+            Change_Status: 'Sync Complete',
+            Feedback_Sync_At: now,
+            Sync_Jobs: [job.id],
+          }),
+        ),
+      ]);
+      return { ok: true, sent: reviews.length, errors: 0, details: [] };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.log(`[pushFeedbackAsSource] chatbase/airtable error: ${msg}`);
+      await updateRecord<SyncJobFields>(TABLES.SYNC_JOBS, job.id, {
+        Completed_At: new Date().toISOString(),
+        Error_Log: msg,
+      }).catch(() => null);
+      return { ok: false, sent: 0, errors: reviews.length, details: [msg] };
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.log(`[pushFeedbackAsSource] error: ${msg}`);
-    await updateRecord<SyncJobFields>(TABLES.SYNC_JOBS, job.id, {
-      Completed_At: new Date().toISOString(),
-      Error_Log: msg,
-    }).catch(() => null);
-    return { ok: false, sent: 0, errors: reviews.length, details: [msg] };
+    console.log(`[pushFeedbackAsSource] setup error: ${msg}`);
+    return { ok: false, sent: 0, errors: 1, details: [msg] };
   }
 }
 
