@@ -165,17 +165,20 @@ export async function fetchAllChatbotProfiles(): Promise<Map<string, ChatbaseCha
 }
 
 /**
- * POST corrective feedback as a source text block to the chatbot's training data.
+ * POST source text to the chatbot's training data.
  * Uses /update-chatbot-data — confirmed working for v1 chatbots.
+ *
+ * IMPORTANT: Chatbase fully replaces sourceText on every call — it does NOT append.
+ * Callers must fetch current accumulated text, append new content, and send the
+ * full combined string. Do NOT pass chatbotName — it renames the bot display name.
  */
 export async function updateChatbotData(
   chatbotId: string,
-  chatbotName: string,
   sourceText: string,
 ): Promise<void> {
   await chatbaseFetch<unknown>(`${CHATBASE_API_BASE}/update-chatbot-data`, {
     method: 'POST',
-    body: JSON.stringify({ chatbotId, chatbotName, sourceText }),
+    body: JSON.stringify({ chatbotId, sourceText }),
   });
 }
 

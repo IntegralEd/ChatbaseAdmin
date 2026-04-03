@@ -38,7 +38,6 @@ export async function pushFeedbackAsSource(
 ): Promise<FeedbackPushResult> {
   const chatbot = await getRecord<ChatbotFields>(TABLES.CHATBOTS, chatbotRecordId);
   const chatbaseId = chatbot.fields.Chatbase_Chatbot_ID;
-  const chatbotName = chatbot.fields.Chatbot_Name ?? chatbaseId;
   if (!chatbaseId) {
     return { ok: false, sent: 0, errors: 1, details: ['Chatbot has no Chatbase_Chatbot_ID'] };
   }
@@ -53,59 +52,53 @@ export async function pushFeedbackAsSource(
     return { ok: true, sent: 0, errors: 0, details: ['No pending feedback with Message_Feedback_Concat filled.'] };
   }
 
-  // Build a combined text for the Sync_Job audit record
-  const allText = reviews
-    .map((r) => `Message Edit: ${r.id}\n${r.fields.Message_Feedback_Concat}`)
-    .join('\n\n---\n\n');
+  // Compiled_Message_Reviews is an Airtable rollup on Chatbase_Chatbots that
+  // auto-concatenates all Message_Reviews with Change_Status = Approved or Sync Complete.
+  // Chatbase replaces sourceText entirely on every POST, so sending this rollup
+  // value overwrites with the full current set — no manual accumulation needed.
+  const compiledText = chatbot.fields.Compiled_Message_Reviews ?? '';
+  if (!compiledText) {
+    return { ok: false, sent: 0, errors: 1, details: ['Compiled_Message_Reviews is empty on chatbot record'] };
+  }
 
-  // Create Sync_Job to record this push
+  console.log(`[pushFeedbackAsSource] chatbot=${chatbaseId} compiledLength=${compiledText.length}`);
+
+  // Create Sync_Job audit record
   const job = await createRecord<SyncJobFields>(TABLES.SYNC_JOBS, {
     Job_Type: 'feedback_push',
     Started_At: new Date().toISOString(),
     Chatbot_Link: [chatbotRecordId],
     Feedback_Reviews_Link: reviews.map((r) => r.id),
     Feedback_Reviews_Count: String(reviews.length),
-    Feedback_Text_Transmitted: allText,
+    Feedback_Text_Transmitted: compiledText,
   });
 
-  // Push each review as its own named source doc so they accumulate in Chatbase.
-  // chatbotName = actual chatbot display name to avoid renaming the bot.
-  const now = new Date().toISOString();
-  let sent = 0;
-  const errors: string[] = [];
-  const successIds: string[] = [];
-
-  for (const r of reviews) {
-    const sourceText = `Message Edit: ${r.id}\n\n${r.fields.Message_Feedback_Concat}`;
-    console.log(`[pushFeedbackAsSource] pushing review=${r.id} length=${sourceText.length}`);
-    try {
-      await updateChatbotData(chatbaseId, chatbotName, sourceText);
-      await updateRecord<MessageReviewFields>(TABLES.MESSAGE_REVIEWS, r.id, {
-        Change_Status: 'Sync Complete',
-        Feedback_Sync_At: now,
-        Sync_Jobs: [job.id],
-      });
-      sent++;
-      successIds.push(r.id);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.log(`[pushFeedbackAsSource] error on review=${r.id}: ${msg}`);
-      errors.push(`${r.id}: ${msg}`);
-    }
+  try {
+    await updateChatbotData(chatbaseId, compiledText);
+    const now = new Date().toISOString();
+    await Promise.all([
+      updateRecord<SyncJobFields>(TABLES.SYNC_JOBS, job.id, {
+        Completed_At: now,
+        Records_Imported: String(reviews.length),
+      }),
+      ...reviews.map((r) =>
+        updateRecord<MessageReviewFields>(TABLES.MESSAGE_REVIEWS, r.id, {
+          Change_Status: 'Sync Complete',
+          Feedback_Sync_At: now,
+          Sync_Jobs: [job.id],
+        }),
+      ),
+    ]);
+    return { ok: true, sent: reviews.length, errors: 0, details: [] };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.log(`[pushFeedbackAsSource] error: ${msg}`);
+    await updateRecord<SyncJobFields>(TABLES.SYNC_JOBS, job.id, {
+      Completed_At: new Date().toISOString(),
+      Error_Log: msg,
+    }).catch(() => null);
+    return { ok: false, sent: 0, errors: reviews.length, details: [msg] };
   }
-
-  await updateRecord<SyncJobFields>(TABLES.SYNC_JOBS, job.id, {
-    Completed_At: now,
-    Records_Imported: String(sent),
-    ...(errors.length ? { Error_Log: errors.join('\n') } : {}),
-  }).catch(() => null);
-
-  return {
-    ok: errors.length === 0,
-    sent,
-    errors: errors.length,
-    details: errors,
-  };
 }
 
 /**
@@ -220,7 +213,7 @@ export async function pushPromptChange(
       await updateChatbotSettings(chatbaseId, { instructions: change.fields.Proposed_Prompt_Text });
     }
     if (hasSource) {
-      await updateChatbotData(chatbaseId, chatbot.fields.Chatbot_Name ?? chatbaseId, change.fields.Proposed_Source_Change!);
+      await updateChatbotData(chatbaseId, change.fields.Proposed_Source_Change!);
     }
     const now = new Date().toISOString();
     await Promise.all([
