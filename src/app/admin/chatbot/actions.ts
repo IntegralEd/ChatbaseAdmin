@@ -38,6 +38,7 @@ export async function pushFeedbackAsSource(
 ): Promise<FeedbackPushResult> {
   const chatbot = await getRecord<ChatbotFields>(TABLES.CHATBOTS, chatbotRecordId);
   const chatbaseId = chatbot.fields.Chatbase_Chatbot_ID;
+  const chatbotName = chatbot.fields.Chatbot_Name ?? chatbaseId;
   if (!chatbaseId) {
     return { ok: false, sent: 0, errors: 1, details: ['Chatbot has no Chatbase_Chatbot_ID'] };
   }
@@ -52,16 +53,10 @@ export async function pushFeedbackAsSource(
     return { ok: true, sent: 0, errors: 0, details: ['No pending feedback with Message_Feedback_Concat filled.'] };
   }
 
-  const date = new Date().toISOString().slice(0, 10);
-  const stamp = userEmail ? `${date} — ${userEmail}` : date;
-  const sourceName = `Corrective Feedback — ${stamp}`;
-  const header = `=== ${sourceName} ===\n`;
-  const blocks = reviews
-    .map((r) => `---\n${r.fields.Message_Feedback_Concat}`)
-    .join('\n\n');
-  const sourceText = `${header}\n${blocks}`;
-
-  console.log(`[pushFeedbackAsSource] chatbot=${chatbaseId} sourceName="${sourceName}" length=${sourceText.length}`);
+  // Build a combined text for the Sync_Job audit record
+  const allText = reviews
+    .map((r) => `Message Edit: ${r.id}\n${r.fields.Message_Feedback_Concat}`)
+    .join('\n\n---\n\n');
 
   // Create Sync_Job to record this push
   const job = await createRecord<SyncJobFields>(TABLES.SYNC_JOBS, {
@@ -70,35 +65,47 @@ export async function pushFeedbackAsSource(
     Chatbot_Link: [chatbotRecordId],
     Feedback_Reviews_Link: reviews.map((r) => r.id),
     Feedback_Reviews_Count: String(reviews.length),
-    Feedback_Text_Transmitted: sourceText,
+    Feedback_Text_Transmitted: allText,
   });
 
-  try {
-    await updateChatbotData(chatbaseId, sourceName, sourceText);
-    const now = new Date().toISOString();
-    await Promise.all([
-      updateRecord<SyncJobFields>(TABLES.SYNC_JOBS, job.id, {
-        Completed_At: now,
-        Records_Imported: String(reviews.length),
-      }),
-      ...reviews.map((r) =>
-        updateRecord<MessageReviewFields>(TABLES.MESSAGE_REVIEWS, r.id, {
-          Change_Status: 'Sync Complete',
-          Feedback_Sync_At: now,
-          Sync_Jobs: [job.id],
-        }),
-      ),
-    ]);
-    return { ok: true, sent: reviews.length, errors: 0, details: [] };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.log(`[pushFeedbackAsSource] error: ${msg}`);
-    await updateRecord<SyncJobFields>(TABLES.SYNC_JOBS, job.id, {
-      Completed_At: new Date().toISOString(),
-      Error_Log: msg,
-    }).catch(() => null);
-    return { ok: false, sent: 0, errors: reviews.length, details: [msg] };
+  // Push each review as its own named source doc so they accumulate in Chatbase.
+  // chatbotName = actual chatbot display name to avoid renaming the bot.
+  const now = new Date().toISOString();
+  let sent = 0;
+  const errors: string[] = [];
+  const successIds: string[] = [];
+
+  for (const r of reviews) {
+    const sourceText = `Message Edit: ${r.id}\n\n${r.fields.Message_Feedback_Concat}`;
+    console.log(`[pushFeedbackAsSource] pushing review=${r.id} length=${sourceText.length}`);
+    try {
+      await updateChatbotData(chatbaseId, chatbotName, sourceText);
+      await updateRecord<MessageReviewFields>(TABLES.MESSAGE_REVIEWS, r.id, {
+        Change_Status: 'Sync Complete',
+        Feedback_Sync_At: now,
+        Sync_Jobs: [job.id],
+      });
+      sent++;
+      successIds.push(r.id);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.log(`[pushFeedbackAsSource] error on review=${r.id}: ${msg}`);
+      errors.push(`${r.id}: ${msg}`);
+    }
   }
+
+  await updateRecord<SyncJobFields>(TABLES.SYNC_JOBS, job.id, {
+    Completed_At: now,
+    Records_Imported: String(sent),
+    ...(errors.length ? { Error_Log: errors.join('\n') } : {}),
+  }).catch(() => null);
+
+  return {
+    ok: errors.length === 0,
+    sent,
+    errors: errors.length,
+    details: errors,
+  };
 }
 
 /**
