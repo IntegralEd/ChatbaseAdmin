@@ -81,7 +81,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   try {
     // Update Chatbase — settings and data are separate endpoints
     if (instructions !== undefined) await updateChatbotSettings(chatbotId, { instructions });
-    if (sourceText !== undefined) await updateChatbotData(chatbotId, sourceText);
+    if (sourceText !== undefined) await updateChatbotData(chatbotId, resolvedName, sourceText);
 
     // Find Airtable record by Chatbase_Chatbot_ID (double underscore, misspelled)
     const records = await listRecords<ChatbotFields>(TABLES.CHATBOTS, {

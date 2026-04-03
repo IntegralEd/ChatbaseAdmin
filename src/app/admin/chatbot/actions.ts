@@ -38,8 +38,9 @@ export async function pushFeedbackAsSource(
 ): Promise<FeedbackPushResult> {
   const chatbot = await getRecord<ChatbotFields>(TABLES.CHATBOTS, chatbotRecordId);
   const chatbaseId = chatbot.fields.Chatbase_Chatbot_ID;
-  if (!chatbaseId) {
-    return { ok: false, sent: 0, errors: 1, details: ['Chatbot has no Chatbase_Chatbot_ID'] };
+  const chatbotName = chatbot.fields.Chatbot_Name;
+  if (!chatbaseId || !chatbotName) {
+    return { ok: false, sent: 0, errors: 1, details: ['Chatbot has no Chatbase_Chatbot_ID or Chatbot_Name'] };
   }
 
   const reviews = await listRecords<MessageReviewFields>(TABLES.MESSAGE_REVIEWS, {
@@ -74,7 +75,7 @@ export async function pushFeedbackAsSource(
   });
 
   try {
-    await updateChatbotData(chatbaseId, compiledText);
+    await updateChatbotData(chatbaseId, chatbotName, compiledText);
     const now = new Date().toISOString();
     await Promise.all([
       updateRecord<SyncJobFields>(TABLES.SYNC_JOBS, job.id, {
@@ -213,7 +214,7 @@ export async function pushPromptChange(
       await updateChatbotSettings(chatbaseId, { instructions: change.fields.Proposed_Prompt_Text });
     }
     if (hasSource) {
-      await updateChatbotData(chatbaseId, change.fields.Proposed_Source_Change!);
+      await updateChatbotData(chatbaseId, chatbot.fields.Chatbot_Name ?? chatbaseId, change.fields.Proposed_Source_Change!);
     }
     const now = new Date().toISOString();
     await Promise.all([
